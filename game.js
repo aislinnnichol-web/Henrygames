@@ -48,8 +48,8 @@ let player = null;
 let level = 0;          // current level index (0..5)
 let totalKeys = 0;      // lifetime keys collected
 let heartsCollected = 0;
-let maxHearts = 3;
-let currentHearts = 3;
+let maxHearts = 5;
+let currentHearts = 5;
 let keysThisLevel = 0;
 let keysNeeded = 10;
 let selectedMove = 0;
@@ -127,6 +127,81 @@ function storeInput() {
   for (let i = 0; i < 4; i++) prevInput.moves[i] = input.moves[i];
 }
 
+// ── Canvas Tap (for menu screens on mobile) ─────────────────
+canvas.addEventListener('touchstart', function(e) {
+  if (gameState === STATE.TITLE || gameState === STATE.MANSION_ENTER ||
+      gameState === STATE.LEVEL_UP || gameState === STATE.GAME_OVER || gameState === STATE.WIN) {
+    e.preventDefault();
+    input.space = true;
+    input.enter = true;
+    setTimeout(() => { input.space = false; input.enter = false; }, 100);
+  }
+}, { passive: false });
+
+// ── Touch Input ─────────────────────────────────────────────
+(function setupTouch() {
+  // D-Pad touch handling
+  const dirs = ['up', 'down', 'left', 'right'];
+  dirs.forEach(dir => {
+    const el = document.getElementById('dpad-' + dir);
+    if (!el) return;
+    el.addEventListener('touchstart', e => { e.preventDefault(); input[dir] = true; el.classList.add('active'); }, { passive: false });
+    el.addEventListener('touchend', e => { e.preventDefault(); input[dir] = false; el.classList.remove('active'); }, { passive: false });
+    el.addEventListener('touchcancel', e => { input[dir] = false; el.classList.remove('active'); });
+  });
+  // A button = Space/Enter (confirm / attack)
+  const btnA = document.getElementById('btn-a');
+  if (btnA) {
+    btnA.addEventListener('touchstart', e => { e.preventDefault(); input.space = true; input.enter = true; btnA.classList.add('active'); }, { passive: false });
+    btnA.addEventListener('touchend', e => { e.preventDefault(); input.space = false; input.enter = false; btnA.classList.remove('active'); }, { passive: false });
+    btnA.addEventListener('touchcancel', e => { input.space = false; input.enter = false; btnA.classList.remove('active'); });
+  }
+  // B button = cycle through moves in combat
+  const btnB = document.getElementById('btn-b');
+  if (btnB) {
+    btnB.addEventListener('touchstart', e => {
+      e.preventDefault();
+      btnB.classList.add('active');
+      if (gameState === STATE.COMBAT && combatTurn === 'player') {
+        const rank = getRank(totalKeys);
+        const maxMoves = Math.min(RANKS[rank].moves.length, 4);
+        selectedMove = (selectedMove + 1) % maxMoves;
+        updateMoveButtons();
+      }
+    }, { passive: false });
+    btnB.addEventListener('touchend', e => { e.preventDefault(); btnB.classList.remove('active'); }, { passive: false });
+    btnB.addEventListener('touchcancel', e => { btnB.classList.remove('active'); });
+  }
+})();
+
+// Update combat move buttons for touch
+function updateMoveButtons() {
+  const moveBtnsEl = document.getElementById('moveBtns');
+  if (!moveBtnsEl) return;
+  if (gameState === STATE.COMBAT && combatTurn === 'player') {
+    const rank = getRank(totalKeys);
+    const moves = RANKS[rank].moves;
+    const max = Math.min(moves.length, 4);
+    moveBtnsEl.style.display = 'flex';
+    moveBtnsEl.innerHTML = '';
+    for (let i = 0; i < max; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'move-btn' + (i === selectedMove ? ' selected' : '');
+      btn.textContent = moves[i] + ' (' + MOVE_DATA[moves[i]].dmg + ')';
+      btn.addEventListener('touchstart', (function(idx) {
+        return function(e) {
+          e.preventDefault();
+          selectedMove = idx;
+          updateMoveButtons();
+        };
+      })(i), { passive: false });
+      moveBtnsEl.appendChild(btn);
+    }
+  } else {
+    moveBtnsEl.style.display = 'none';
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -191,13 +266,13 @@ function generateOverworld() {
     overworldMap[r][c] = 'tree';
   }
   // Hearts to collect (need to fill up 3 hearts)
-  let heartsToPlace = 3 + level;
+  let heartsToPlace = 5 + level * 2;
   for (let i = 0; i < heartsToPlace; i++) {
     let c, r;
     do { c = rand(1, COLS - 2); r = rand(1, ROWS - 2); } while (
       overworldMap[r][c] !== 'grass' && overworldMap[r][c] !== 'flower'
     );
-    heartPickups.push({ x: c, y: r, collected: false });
+    heartPickups.push({ x: c, y: r, collected: false, mansion: false });
   }
   // Mansion portal (top-right area) — clear surrounding tiles so it's reachable
   let px, py;
@@ -281,7 +356,7 @@ function generateMansion() {
     keys.push({ x: c, y: r, collected: false });
   }
   // Monsters (scales with level)
-  let monsterCount = 3 + level * 2;
+  let monsterCount = 2 + level;
   for (let i = 0; i < monsterCount; i++) {
     let c, r;
     do { c = rand(3, COLS - 4); r = rand(3, ROWS - 4); } while (
@@ -289,11 +364,20 @@ function generateMansion() {
     );
     monsters.push({
       x: c, y: r, alive: true,
-      hp: 3 + level * 2,
-      maxHp: 3 + level * 2,
+      hp: 2 + level,
+      maxHp: 2 + level,
       name: getMonsterName(level),
       moveTimer: 0,
     });
+  }
+  // Heart pickups inside mansion (heal between fights)
+  let mansionHearts = 2 + level;
+  for (let i = 0; i < mansionHearts; i++) {
+    let c, r;
+    do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
+      mansionMap[r][c] !== 'floor' && mansionMap[r][c] !== 'cobweb'
+    );
+    heartPickups.push({ x: c, y: r, collected: false, mansion: true });
   }
   // Door back (bottom-left)
   mansionDoorPos = { x: 1, y: ROWS - 2 };
@@ -319,7 +403,7 @@ function createPlayer() {
 function initLevel() {
   keysThisLevel = 0;
   heartsCollected = 0;
-  currentHearts = 0; // Start empty — collect hearts to fill up!
+  currentHearts = 0; // Start empty -- collect hearts to fill up!
   generateOverworld();
   generateMansion();
   createPlayer();
@@ -521,6 +605,73 @@ function drawMonster(cx, cy, size, lvl) {
   ctx.restore();
 }
 
+// ── 3D Block Drawing Helpers ─────────────────────────────────
+const BLOCK_DEPTH = 12; // visible side height for 3D blocks
+
+function draw3DBlock(x, y, w, h, topColor, leftColor, rightColor) {
+  // Top face
+  ctx.fillStyle = topColor;
+  ctx.fillRect(x, y, w, h);
+  // Right face (bottom-right shadow)
+  ctx.fillStyle = rightColor;
+  ctx.beginPath();
+  ctx.moveTo(x + w, y + h);
+  ctx.lineTo(x + w + BLOCK_DEPTH * 0.4, y + h + BLOCK_DEPTH);
+  ctx.lineTo(x + BLOCK_DEPTH * 0.4, y + h + BLOCK_DEPTH);
+  ctx.lineTo(x, y + h);
+  ctx.closePath();
+  ctx.fill();
+  // Right side face
+  ctx.fillStyle = leftColor;
+  ctx.beginPath();
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w + BLOCK_DEPTH * 0.4, y + BLOCK_DEPTH);
+  ctx.lineTo(x + w + BLOCK_DEPTH * 0.4, y + h + BLOCK_DEPTH);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function draw3DWallBlock(x, y, w, h, baseColor, depth) {
+  const d = depth || BLOCK_DEPTH;
+  // Darken for side faces
+  const top = baseColor;
+  const right = shadeColor(baseColor, -30);
+  const bottom = shadeColor(baseColor, -50);
+  // Top face
+  ctx.fillStyle = top;
+  ctx.fillRect(x, y, w, h);
+  // Front face (taller for walls)
+  ctx.fillStyle = bottom;
+  ctx.fillRect(x, y + h, w, d);
+  // Right face
+  ctx.fillStyle = right;
+  ctx.beginPath();
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w, y + h + d);
+  ctx.lineTo(x + w + d * 0.3, y + h + d * 0.7);
+  ctx.lineTo(x + w + d * 0.3, y - d * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  // Highlight edge
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.stroke();
+}
+
+function shadeColor(hex, amount) {
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  r = Math.max(0, Math.min(255, r + amount));
+  g = Math.max(0, Math.min(255, g + amount));
+  b = Math.max(0, Math.min(255, b + amount));
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
 // ── Scene: Title ─────────────────────────────────────────────
 function drawTitle() {
   // Background gradient
@@ -554,10 +705,10 @@ function drawTitle() {
   drawAvatar(W / 2, 340, 50, aIdx);
   drawText(RANKS[aIdx].name, W / 2, 390, RANKS[aIdx].color, 18, 'center');
 
-  // Prompt
+  // Prompt (touch-friendly)
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawTextBold('Press ENTER to Start', W / 2, 480, '#fff', 22, 'center');
+  drawTextBold('Tap or Press ENTER to Start', W / 2, 480, '#fff', 22, 'center');
   ctx.globalAlpha = 1;
 
   drawText('Collect keys. Fight monsters. Become a God.', W / 2, 530, '#888', 14, 'center');
@@ -583,33 +734,35 @@ function drawOverworld() {
 
   const t = Date.now() / 1000;
 
-  // === Pass 1: Ground tiles (with depth shading) ===
+  // === Pass 1: Ground tiles with 3D depth ===
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const tile = overworldMap[r][c];
       const tx = c * TILE;
       const ty = r * TILE;
-      // Depth shading: tiles further "north" (lower row) are slightly darker, giving perspective
       const depthShade = Math.floor(r * 0.8);
 
       switch (tile) {
         case 'grass':
         case 'tree':
         case 'portal': {
-          // Base grass with variation and depth
           const hue = 120 + ((r + c) % 3) - 1;
           const sat = 50 + ((r + c) % 3) * 5;
           const light = 35 + depthShade + ((r * c) % 5) * 2;
+          // 3D raised tile
           ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
           ctx.fillRect(tx, ty, TILE, TILE);
-          // Subtle tile edge highlight (top-left = lighter, bottom-right = darker) for 3D feel
-          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          // 3D edges: top highlight, bottom/right shadow
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
           ctx.fillRect(tx, ty, TILE, 2);
           ctx.fillRect(tx, ty, 2, TILE);
-          ctx.fillStyle = 'rgba(0,0,0,0.08)';
-          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
-          ctx.fillRect(tx + TILE - 2, ty, 2, TILE);
-          // Grass blades with variation
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
+          ctx.fillRect(tx + TILE - 3, ty, 3, TILE);
+          // Bevel inner highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.04)';
+          ctx.fillRect(tx + 2, ty + 2, TILE - 4, TILE - 4);
+          // Grass blades
           if ((r + c) % 3 === 0) {
             ctx.strokeStyle = `hsl(120, 60%, ${28 + depthShade}%)`;
             ctx.lineWidth = 1;
@@ -628,11 +781,11 @@ function drawOverworld() {
         case 'flower': {
           ctx.fillStyle = `hsl(120, 50%, ${37 + depthShade}%)`;
           ctx.fillRect(tx, ty, TILE, TILE);
-          // 3D tile edges
-          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
           ctx.fillRect(tx, ty, TILE, 2);
-          ctx.fillStyle = 'rgba(0,0,0,0.08)';
-          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
+          ctx.fillRect(tx, ty, 2, TILE);
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
           // Stem
           ctx.strokeStyle = '#2E7D32';
           ctx.lineWidth = 2;
@@ -641,95 +794,116 @@ function drawOverworld() {
           ctx.moveTo(tx + TILE / 2, ty + TILE - 5);
           ctx.lineTo(tx + TILE / 2 + sway, ty + TILE / 2 + 3);
           ctx.stroke();
-          // Petals (multi-petal flower for depth)
+          // 3D petals with shadow
           const flowerColors = ['#FF69B4', '#FFD700', '#FF6347', '#DA70D6'];
           const fc = flowerColors[(r + c) % flowerColors.length];
           const fcx = tx + TILE / 2 + sway;
           const fcy = ty + TILE / 2;
+          // Shadow under flower
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.beginPath();
+          ctx.ellipse(fcx + 2, fcy + 3, 8, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
           ctx.fillStyle = fc;
           for (let p = 0; p < 5; p++) {
             const a = (Math.PI * 2 / 5) * p + t * 0.3;
             ctx.beginPath();
-            ctx.ellipse(fcx + Math.cos(a) * 4, fcy + Math.sin(a) * 4, 3.5, 2, a, 0, Math.PI * 2);
+            ctx.ellipse(fcx + Math.cos(a) * 5, fcy + Math.sin(a) * 5, 4, 2.5, a, 0, Math.PI * 2);
             ctx.fill();
           }
-          // Center
+          // Bright center
           ctx.fillStyle = '#FFD700';
+          ctx.shadowColor = '#FFD700';
+          ctx.shadowBlur = 4;
           ctx.beginPath();
-          ctx.arc(fcx, fcy, 2.5, 0, Math.PI * 2);
+          ctx.arc(fcx, fcy, 3, 0, Math.PI * 2);
           ctx.fill();
+          ctx.shadowBlur = 0;
           break;
         }
         case 'water': {
           const waveLight = 48 + Math.sin(t * 1.5 + r * 0.7 + c * 0.5) * 6;
+          // Sunken water tile (3D inset)
           ctx.fillStyle = `hsl(210, 70%, ${waveLight}%)`;
           ctx.fillRect(tx, ty, TILE, TILE);
-          // Depth: darker edges
-          ctx.fillStyle = 'rgba(0,0,40,0.15)';
-          ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
+          // Dark edges for inset look
+          ctx.fillStyle = 'rgba(0,0,40,0.3)';
+          ctx.fillRect(tx, ty, TILE, 3);
+          ctx.fillRect(tx, ty, 3, TILE);
+          ctx.fillStyle = 'rgba(100,180,255,0.15)';
+          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
+          ctx.fillRect(tx + TILE - 2, ty, 2, TILE);
           // Animated ripples
-          ctx.strokeStyle = `rgba(255,255,255,${0.2 + 0.1 * Math.sin(t * 2 + c)})`;
+          ctx.strokeStyle = `rgba(255,255,255,${0.25 + 0.15 * Math.sin(t * 2 + c)})`;
           ctx.lineWidth = 1;
-          for (let rp = 0; rp < 2; rp++) {
-            const rx = tx + 10 + rp * 18;
+          for (let rp = 0; rp < 3; rp++) {
+            const rx = tx + 8 + rp * 12;
             const ry = ty + TILE / 2 + Math.sin(t * 2 + c + rp) * 4;
             ctx.beginPath();
-            ctx.arc(rx, ry, 5 + rp * 3, 0, Math.PI);
+            ctx.arc(rx, ry, 4 + rp * 2, 0, Math.PI);
             ctx.stroke();
           }
-          // Shine highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.1)';
-          ctx.fillRect(tx + 3, ty + 3, 8, 4);
+          // Specular highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.fillRect(tx + 4, ty + 4, 6, 3);
           break;
         }
       }
     }
   }
 
-  // === Pass 2: Trees with shadows (drawn on top for layering/depth) ===
-  // First draw all tree shadows
-  overworldEntities.forEach(e => {
-    if (e.type === 'tree') {
-      const tx = e.x * TILE;
-      const ty = e.y * TILE;
-      // Ground shadow (offset to bottom-right)
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.beginPath();
-      ctx.ellipse(tx + TILE / 2 + 6, ty + TILE - 2, 16, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // === Pass 2: Trees with 3D shadows and depth ===
+  // Sort by Y for depth ordering
+  const sortedTrees = overworldEntities.filter(e => e.type === 'tree').sort((a, b) => a.y - b.y);
+  // Draw shadows first
+  sortedTrees.forEach(e => {
+    const tx = e.x * TILE;
+    const ty = e.y * TILE;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(tx + TILE / 2 + 8, ty + TILE + 2, 18, 7, 0.1, 0, Math.PI * 2);
+    ctx.fill();
   });
-  // Then draw all trees (so they layer over shadows of trees behind them)
-  overworldEntities.forEach(e => {
-    if (e.type === 'tree') {
-      const tx = e.x * TILE;
-      const ty = e.y * TILE;
-      // Trunk with gradient for depth
-      const trunkGrad = ctx.createLinearGradient(tx + 14, ty, tx + 26, ty);
-      trunkGrad.addColorStop(0, '#4E342E');
-      trunkGrad.addColorStop(0.5, '#6D4C41');
-      trunkGrad.addColorStop(1, '#3E2723');
-      ctx.fillStyle = trunkGrad;
-      ctx.fillRect(tx + 14, ty + 16, 12, 24);
-      // Canopy layers (back to front for depth)
-      ctx.fillStyle = '#1B5E20';
-      ctx.beginPath();
-      ctx.arc(tx + TILE / 2 + 2, ty + 16, 13, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#2E7D32';
-      ctx.beginPath();
-      ctx.arc(tx + TILE / 2, ty + 12, 15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#388E3C';
-      ctx.beginPath();
-      ctx.arc(tx + TILE / 2 - 4, ty + 9, 10, 0, Math.PI * 2);
-      ctx.fill();
-      // Canopy highlight (sunlight from top-left)
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.beginPath();
-      ctx.arc(tx + TILE / 2 - 6, ty + 7, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // Draw trees front-to-back
+  sortedTrees.forEach(e => {
+    const tx = e.x * TILE;
+    const ty = e.y * TILE;
+    // 3D trunk with visible front and side
+    const trunkGrad = ctx.createLinearGradient(tx + 14, ty, tx + 26, ty);
+    trunkGrad.addColorStop(0, '#5D4037');
+    trunkGrad.addColorStop(0.4, '#795548');
+    trunkGrad.addColorStop(1, '#3E2723');
+    ctx.fillStyle = trunkGrad;
+    ctx.fillRect(tx + 14, ty + 14, 12, 26);
+    // Trunk right side (3D)
+    ctx.fillStyle = '#3E2723';
+    ctx.fillRect(tx + 26, ty + 14, 3, 26);
+    // Trunk front bottom
+    ctx.fillStyle = '#2E1B0E';
+    ctx.fillRect(tx + 14, ty + 38, 15, 4);
+    // Multi-layer canopy for 3D depth
+    ctx.fillStyle = '#1B5E20';
+    ctx.beginPath();
+    ctx.arc(tx + TILE / 2 + 3, ty + 18, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2E7D32';
+    ctx.beginPath();
+    ctx.arc(tx + TILE / 2, ty + 13, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#43A047';
+    ctx.beginPath();
+    ctx.arc(tx + TILE / 2 - 3, ty + 8, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // 3D highlights (sunlight from top-left)
+    ctx.fillStyle = 'rgba(150,255,150,0.15)';
+    ctx.beginPath();
+    ctx.arc(tx + TILE / 2 - 7, ty + 5, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Canopy shadow (bottom edge darker)
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.beginPath();
+    ctx.arc(tx + TILE / 2 + 2, ty + 20, 12, 0, Math.PI);
+    ctx.fill();
   });
 
   // Mansion portal with enhanced glow
@@ -784,7 +958,7 @@ function drawOverworld() {
 
   // Heart pickups with glow and shadow
   heartPickups.forEach(h => {
-    if (h.collected) return;
+    if (h.collected || h.mansion) return;
     const hx = h.x * TILE + TILE / 2;
     const hy = h.y * TILE + TILE / 2;
     const bob = Math.sin(t * 2.5 + h.x + h.y * 0.7) * 4;
@@ -934,7 +1108,7 @@ function drawMansionEnter() {
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Press ENTER to go inside...', W / 2, 510, '#FF8A65', 18, 'center');
+  drawText('Tap or Press ENTER to go inside...', W / 2, 510, '#FF8A65', 18, 'center');
   ctx.globalAlpha = 1;
 }
 
@@ -957,41 +1131,100 @@ function drawMansion() {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const tile = mansionMap[r][c];
+      const tx = c * TILE;
+      const ty = r * TILE;
       switch (tile) {
-        case 'wall':
-          ctx.fillStyle = `hsl(0, 0%, ${10 + ((r + c) % 3) * 2}%)`;
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          // Brick lines
-          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        case 'wall': {
+          // 3D raised wall block
+          const baseLight = 10 + ((r + c) % 3) * 2;
+          // Top face
+          ctx.fillStyle = `hsl(0, 0%, ${baseLight + 8}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // Front face (darker)
+          ctx.fillStyle = `hsl(0, 0%, ${baseLight}%)`;
+          ctx.fillRect(tx, ty + TILE - 8, TILE, 8);
+          // Right face
+          ctx.fillStyle = `hsl(0, 0%, ${baseLight - 3}%)`;
+          ctx.fillRect(tx + TILE - 4, ty, 4, TILE);
+          // 3D highlight edges
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(tx, ty, TILE, 2);
+          ctx.fillRect(tx, ty, 2, TILE);
+          // Brick lines with 3D grooves
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
           ctx.lineWidth = 1;
-          ctx.strokeRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE / 2 - 1);
+          ctx.strokeRect(tx + 2, ty + 2, TILE - 4, TILE / 2 - 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+          ctx.strokeRect(tx + 3, ty + 3, TILE - 6, TILE / 2 - 4);
           break;
-        case 'floor':
-          ctx.fillStyle = `hsl(270, 5%, ${15 + ((r + c) % 2) * 3}%)`;
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+        }
+        case 'floor': {
+          // 3D stone floor tile
+          const fl = 15 + ((r + c) % 2) * 3;
+          ctx.fillStyle = `hsl(270, 5%, ${fl}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // Inset groove between tiles
+          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(tx + 1, ty + 1, TILE - 2, TILE - 2);
+          // Subtle 3D inner bevel
+          ctx.fillStyle = 'rgba(255,255,255,0.03)';
+          ctx.fillRect(tx + 2, ty + 2, TILE - 4, 1);
+          ctx.fillRect(tx + 2, ty + 2, 1, TILE - 4);
+          ctx.fillStyle = 'rgba(0,0,0,0.05)';
+          ctx.fillRect(tx + 2, ty + TILE - 3, TILE - 4, 1);
           break;
+        }
         case 'cobweb':
           ctx.fillStyle = '#1a1520';
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          ctx.strokeStyle = 'rgba(200, 200, 200, 0.15)';
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // 3D cobweb with glow
+          ctx.strokeStyle = 'rgba(200, 200, 200, 0.2)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(c * TILE, r * TILE);
-          ctx.lineTo(c * TILE + TILE, r * TILE + TILE);
-          ctx.moveTo(c * TILE + TILE, r * TILE);
-          ctx.lineTo(c * TILE, r * TILE + TILE);
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(tx + TILE, ty + TILE);
+          ctx.moveTo(tx + TILE, ty);
+          ctx.lineTo(tx, ty + TILE);
+          ctx.moveTo(tx + TILE / 2, ty);
+          ctx.lineTo(tx + TILE / 2, ty + TILE);
+          ctx.moveTo(tx, ty + TILE / 2);
+          ctx.lineTo(tx + TILE, ty + TILE / 2);
           ctx.stroke();
-          break;
-        case 'door':
-          ctx.fillStyle = '#1a1520';
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          ctx.fillStyle = '#5D4037';
-          ctx.fillRect(c * TILE + 8, r * TILE + 2, TILE - 16, TILE - 4);
-          ctx.fillStyle = '#FFD700';
+          // Center dot
+          ctx.fillStyle = 'rgba(200,200,200,0.15)';
           ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2 + 6, r * TILE + TILE / 2, 3, 0, Math.PI * 2);
+          ctx.arc(tx + TILE / 2, ty + TILE / 2, 2, 0, Math.PI * 2);
           ctx.fill();
           break;
+        case 'door': {
+          ctx.fillStyle = '#1a1520';
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // 3D door with frame
+          ctx.fillStyle = '#3E2723';
+          ctx.fillRect(tx + 6, ty + 1, TILE - 12, TILE - 2);
+          // Door face lighter
+          ctx.fillStyle = '#5D4037';
+          ctx.fillRect(tx + 8, ty + 3, TILE - 16, TILE - 6);
+          // Door panels (3D inset)
+          ctx.fillStyle = '#4E342E';
+          ctx.fillRect(tx + 10, ty + 5, TILE - 20, (TILE - 12) / 2 - 1);
+          ctx.fillRect(tx + 10, ty + TILE / 2 + 1, TILE - 20, (TILE - 12) / 2 - 1);
+          // Knob with shine
+          ctx.fillStyle = '#FFD700';
+          ctx.shadowColor = '#FFD700';
+          ctx.shadowBlur = 4;
+          ctx.beginPath();
+          ctx.arc(tx + TILE / 2 + 6, ty + TILE / 2, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          // Knob highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.beginPath();
+          ctx.arc(tx + TILE / 2 + 5, ty + TILE / 2 - 1, 1, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
       }
     }
   }
@@ -1004,6 +1237,18 @@ function drawMansion() {
   fogGrad.addColorStop(1, 'rgba(0,0,0,0.75)');
   ctx.fillStyle = fogGrad;
   ctx.fillRect(0, 0, W, H);
+
+  // Mansion heart pickups
+  heartPickups.forEach(h => {
+    if (h.collected || !h.mansion) return;
+    const hx = h.x * TILE + TILE / 2;
+    const hy = h.y * TILE + TILE / 2;
+    const bob = Math.sin(Date.now() / 1000 * 2.5 + h.x + h.y * 0.7) * 4;
+    ctx.shadowColor = '#FF1744';
+    ctx.shadowBlur = 10;
+    drawHeart(hx, hy + bob - 4, 8, '#FF1744');
+    ctx.shadowBlur = 0;
+  });
 
   // Keys
   keys.forEach(k => {
@@ -1066,7 +1311,16 @@ function updateMansion(dt) {
       }
     });
 
-    // Monster collision → combat
+    // Pick up mansion hearts
+    heartPickups.forEach(h => {
+      if (!h.collected && h.mansion && h.x === player.x && h.y === player.y) {
+        h.collected = true;
+        currentHearts = Math.min(currentHearts + 1, maxHearts);
+        spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
+      }
+    });
+
+    // Monster collision -> combat
     monsters.forEach(m => {
       if (m.alive && m.x === player.x && m.y === player.y) {
         startCombat(m);
@@ -1135,11 +1389,31 @@ function drawCombat() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Battle ground
+  // 3D Battle arena with perspective floor
+  // Shadow under platform
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.ellipse(W / 2, H * 0.55, 360, 55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Platform side (3D depth)
+  ctx.fillStyle = '#0f0a15';
+  ctx.beginPath();
+  ctx.ellipse(W / 2, H * 0.53, 350, 50, 0, 0, Math.PI);
+  ctx.fill();
+  // Platform top
   ctx.fillStyle = '#1a1520';
   ctx.beginPath();
   ctx.ellipse(W / 2, H * 0.5, 350, 50, 0, 0, Math.PI * 2);
   ctx.fill();
+  // Grid lines for 3D perspective floor
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let i = -5; i <= 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + i * 60, H * 0.5 - 50);
+    ctx.lineTo(W / 2 + i * 70, H * 0.5 + 50);
+    ctx.stroke();
+  }
 
   // Monster (right side)
   const monX = W * 0.65;
@@ -1277,6 +1551,7 @@ function updateCombat(dt) {
     combatAnimTimer += dt;
     if (combatAnimTimer > 1.2) {
       currentMonster.alive = false;
+      playerCombatHP = Math.min(playerCombatHP + 1, maxHearts);
       currentHearts = playerCombatHP;
       startTransition(() => {
         gameState = STATE.MANSION;
@@ -1342,7 +1617,7 @@ function drawLevelUp() {
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Press ENTER to continue', W / 2, 520, '#fff', 18, 'center');
+  drawText('Tap or Press ENTER to continue', W / 2, 520, '#fff', 18, 'center');
   ctx.globalAlpha = 1;
 }
 
@@ -1371,7 +1646,7 @@ function drawGameOver() {
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Press ENTER to try again', W / 2, 470, '#FF8A65', 20, 'center');
+  drawText('Tap or Press ENTER to try again', W / 2, 470, '#FF8A65', 20, 'center');
   ctx.globalAlpha = 1;
 }
 
@@ -1419,7 +1694,7 @@ function drawWin() {
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Press ENTER to play again', W / 2, 520, '#fff', 18, 'center');
+  drawText('Tap or Press ENTER to play again', W / 2, 520, '#fff', 18, 'center');
   ctx.globalAlpha = 1;
 }
 
@@ -1595,6 +1870,9 @@ function gameLoop(now) {
 
   // HUD
   updateHUD();
+
+  // Touch move buttons
+  updateMoveButtons();
 
   storeInput();
   requestAnimationFrame(gameLoop);
