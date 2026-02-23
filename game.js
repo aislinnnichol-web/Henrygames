@@ -199,13 +199,52 @@ function generateOverworld() {
     );
     heartPickups.push({ x: c, y: r, collected: false });
   }
-  // Mansion portal (top-right area)
+  // Mansion portal (top-right area) — clear surrounding tiles so it's reachable
   let px, py;
-  do { px = rand(COLS - 5, COLS - 2); py = rand(1, 3); } while (
+  do { px = rand(COLS - 5, COLS - 2); py = rand(2, 4); } while (
     overworldMap[py][px] !== 'grass' && overworldMap[py][px] !== 'flower'
   );
   portalPos = { x: px, y: py };
   overworldMap[py][px] = 'portal';
+  // Clear a path around the portal so the player can always reach it
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = py + dr;
+      const nc = px + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        if (overworldMap[nr][nc] === 'tree' || overworldMap[nr][nc] === 'water') {
+          overworldMap[nr][nc] = 'grass';
+          // Also remove from entities list
+          overworldEntities = overworldEntities.filter(e => !(e.x === nc && e.y === nr));
+        }
+      }
+    }
+  }
+  // Also clear a corridor from portal downward so it's accessible
+  for (let r = py + 1; r <= py + 3 && r < ROWS; r++) {
+    if (overworldMap[r][px] === 'tree' || overworldMap[r][px] === 'water') {
+      overworldMap[r][px] = 'grass';
+      overworldEntities = overworldEntities.filter(e => !(e.x === px && e.y === r));
+    }
+  }
+  // Clear around hearts so they're reachable too
+  heartPickups.forEach(h => {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = h.y + dr;
+        const nc = h.x + dc;
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+          if (overworldMap[nr][nc] === 'tree') {
+            // Only clear one adjacent tile per heart (enough for access)
+            overworldMap[nr][nc] = 'grass';
+            overworldEntities = overworldEntities.filter(e => !(e.x === nc && e.y === nr));
+            return; // break out of this heart's loop after clearing one tile
+          }
+        }
+      }
+    }
+  });
 }
 
 function generateMansion() {
@@ -280,7 +319,7 @@ function createPlayer() {
 function initLevel() {
   keysThisLevel = 0;
   heartsCollected = 0;
-  currentHearts = maxHearts;
+  currentHearts = 0; // Start empty — collect hearts to fill up!
   generateOverworld();
   generateMansion();
   createPlayer();
@@ -534,95 +573,199 @@ function updateTitle() {
 
 // ── Scene: Overworld ─────────────────────────────────────────
 function drawOverworld() {
-  // Sky
+  // Sky gradient with clouds feel
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#87CEEB');
-  grad.addColorStop(1, '#98FB98');
+  grad.addColorStop(0, '#6BB3E0');
+  grad.addColorStop(0.4, '#87CEEB');
+  grad.addColorStop(1, '#7BC67E');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Tiles
+  const t = Date.now() / 1000;
+
+  // === Pass 1: Ground tiles (with depth shading) ===
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const tile = overworldMap[r][c];
+      const tx = c * TILE;
+      const ty = r * TILE;
+      // Depth shading: tiles further "north" (lower row) are slightly darker, giving perspective
+      const depthShade = Math.floor(r * 0.8);
+
       switch (tile) {
         case 'grass':
-          ctx.fillStyle = `hsl(120, ${55 + ((r + c) % 3) * 5}%, ${40 + ((r * c) % 5) * 2}%)`;
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          // Grass blades
-          if ((r + c) % 4 === 0) {
-            ctx.strokeStyle = '#2E7D32';
+        case 'tree':
+        case 'portal': {
+          // Base grass with variation and depth
+          const hue = 120 + ((r + c) % 3) - 1;
+          const sat = 50 + ((r + c) % 3) * 5;
+          const light = 35 + depthShade + ((r * c) % 5) * 2;
+          ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // Subtle tile edge highlight (top-left = lighter, bottom-right = darker) for 3D feel
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillRect(tx, ty, TILE, 2);
+          ctx.fillRect(tx, ty, 2, TILE);
+          ctx.fillStyle = 'rgba(0,0,0,0.08)';
+          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
+          ctx.fillRect(tx + TILE - 2, ty, 2, TILE);
+          // Grass blades with variation
+          if ((r + c) % 3 === 0) {
+            ctx.strokeStyle = `hsl(120, 60%, ${28 + depthShade}%)`;
             ctx.lineWidth = 1;
+            const sway = Math.sin(t * 1.5 + c * 0.5 + r * 0.3) * 2;
             ctx.beginPath();
-            ctx.moveTo(c * TILE + 10, r * TILE + TILE);
-            ctx.lineTo(c * TILE + 12, r * TILE + TILE - 10);
-            ctx.moveTo(c * TILE + 25, r * TILE + TILE);
-            ctx.lineTo(c * TILE + 23, r * TILE + TILE - 8);
+            ctx.moveTo(tx + 10, ty + TILE);
+            ctx.lineTo(tx + 12 + sway, ty + TILE - 12);
+            ctx.moveTo(tx + 25, ty + TILE);
+            ctx.lineTo(tx + 23 + sway * 0.7, ty + TILE - 9);
+            ctx.moveTo(tx + 33, ty + TILE - 2);
+            ctx.lineTo(tx + 35 + sway * 0.5, ty + TILE - 11);
             ctx.stroke();
           }
           break;
-        case 'flower':
-          ctx.fillStyle = '#4CAF50';
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          // Draw flower
-          const flowerColors = ['#FF69B4', '#FFD700', '#FF6347', '#DA70D6'];
-          ctx.fillStyle = flowerColors[(r + c) % flowerColors.length];
+        }
+        case 'flower': {
+          ctx.fillStyle = `hsl(120, 50%, ${37 + depthShade}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // 3D tile edges
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillRect(tx, ty, TILE, 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.08)';
+          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
+          // Stem
+          ctx.strokeStyle = '#2E7D32';
+          ctx.lineWidth = 2;
+          const sway = Math.sin(t * 1.2 + c + r) * 1.5;
           ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2, r * TILE + TILE / 2, 5, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(tx + TILE / 2, ty + TILE - 5);
+          ctx.lineTo(tx + TILE / 2 + sway, ty + TILE / 2 + 3);
+          ctx.stroke();
+          // Petals (multi-petal flower for depth)
+          const flowerColors = ['#FF69B4', '#FFD700', '#FF6347', '#DA70D6'];
+          const fc = flowerColors[(r + c) % flowerColors.length];
+          const fcx = tx + TILE / 2 + sway;
+          const fcy = ty + TILE / 2;
+          ctx.fillStyle = fc;
+          for (let p = 0; p < 5; p++) {
+            const a = (Math.PI * 2 / 5) * p + t * 0.3;
+            ctx.beginPath();
+            ctx.ellipse(fcx + Math.cos(a) * 4, fcy + Math.sin(a) * 4, 3.5, 2, a, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          // Center
           ctx.fillStyle = '#FFD700';
           ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2, r * TILE + TILE / 2, 2, 0, Math.PI * 2);
+          ctx.arc(fcx, fcy, 2.5, 0, Math.PI * 2);
           ctx.fill();
           break;
-        case 'water':
-          ctx.fillStyle = `hsl(210, 70%, ${50 + Math.sin(Date.now() / 500 + r + c) * 5}%)`;
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          // Ripples
-          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        }
+        case 'water': {
+          const waveLight = 48 + Math.sin(t * 1.5 + r * 0.7 + c * 0.5) * 6;
+          ctx.fillStyle = `hsl(210, 70%, ${waveLight}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // Depth: darker edges
+          ctx.fillStyle = 'rgba(0,0,40,0.15)';
+          ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
+          // Animated ripples
+          ctx.strokeStyle = `rgba(255,255,255,${0.2 + 0.1 * Math.sin(t * 2 + c)})`;
           ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2, r * TILE + TILE / 2 + Math.sin(Date.now() / 300 + c) * 3, 8, 0, Math.PI);
-          ctx.stroke();
+          for (let rp = 0; rp < 2; rp++) {
+            const rx = tx + 10 + rp * 18;
+            const ry = ty + TILE / 2 + Math.sin(t * 2 + c + rp) * 4;
+            ctx.beginPath();
+            ctx.arc(rx, ry, 5 + rp * 3, 0, Math.PI);
+            ctx.stroke();
+          }
+          // Shine highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
+          ctx.fillRect(tx + 3, ty + 3, 8, 4);
           break;
-        case 'tree':
-          ctx.fillStyle = '#4CAF50';
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          // Trunk
-          ctx.fillStyle = '#5D4037';
-          ctx.fillRect(c * TILE + 15, r * TILE + 20, 10, 20);
-          // Canopy
-          ctx.fillStyle = '#2E7D32';
-          ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2, r * TILE + 14, 14, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#1B5E20';
-          ctx.beginPath();
-          ctx.arc(c * TILE + TILE / 2 - 5, r * TILE + 10, 8, 0, Math.PI * 2);
-          ctx.fill();
-          break;
-        case 'portal':
-          ctx.fillStyle = '#4CAF50';
-          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-          break;
+        }
       }
     }
   }
 
-  // Mansion portal
+  // === Pass 2: Trees with shadows (drawn on top for layering/depth) ===
+  // First draw all tree shadows
+  overworldEntities.forEach(e => {
+    if (e.type === 'tree') {
+      const tx = e.x * TILE;
+      const ty = e.y * TILE;
+      // Ground shadow (offset to bottom-right)
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(tx + TILE / 2 + 6, ty + TILE - 2, 16, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  // Then draw all trees (so they layer over shadows of trees behind them)
+  overworldEntities.forEach(e => {
+    if (e.type === 'tree') {
+      const tx = e.x * TILE;
+      const ty = e.y * TILE;
+      // Trunk with gradient for depth
+      const trunkGrad = ctx.createLinearGradient(tx + 14, ty, tx + 26, ty);
+      trunkGrad.addColorStop(0, '#4E342E');
+      trunkGrad.addColorStop(0.5, '#6D4C41');
+      trunkGrad.addColorStop(1, '#3E2723');
+      ctx.fillStyle = trunkGrad;
+      ctx.fillRect(tx + 14, ty + 16, 12, 24);
+      // Canopy layers (back to front for depth)
+      ctx.fillStyle = '#1B5E20';
+      ctx.beginPath();
+      ctx.arc(tx + TILE / 2 + 2, ty + 16, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2E7D32';
+      ctx.beginPath();
+      ctx.arc(tx + TILE / 2, ty + 12, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#388E3C';
+      ctx.beginPath();
+      ctx.arc(tx + TILE / 2 - 4, ty + 9, 10, 0, Math.PI * 2);
+      ctx.fill();
+      // Canopy highlight (sunlight from top-left)
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      ctx.arc(tx + TILE / 2 - 6, ty + 7, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Mansion portal with enhanced glow
   if (portalPos) {
     const px = portalPos.x * TILE + TILE / 2;
     const py = portalPos.y * TILE + TILE / 2;
-    const pulse = Math.sin(Date.now() / 300) * 5;
-    // Check if player can enter
+    const pulse = Math.sin(t * 2) * 5;
     const canEnter = currentHearts >= maxHearts;
-    ctx.fillStyle = canEnter ? 'rgba(75, 0, 130, 0.8)' : 'rgba(75, 0, 130, 0.3)';
+
+    // Ground glow ring
+    ctx.fillStyle = canEnter ? 'rgba(156, 39, 176, 0.2)' : 'rgba(80, 40, 80, 0.1)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + 12, 22, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Portal swirl
+    ctx.fillStyle = canEnter ? 'rgba(75, 0, 130, 0.85)' : 'rgba(50, 30, 60, 0.4)';
     ctx.shadowColor = canEnter ? '#9C27B0' : '#333';
-    ctx.shadowBlur = canEnter ? 15 + pulse : 5;
+    ctx.shadowBlur = canEnter ? 18 + pulse : 5;
     ctx.beginPath();
     ctx.arc(px, py, 16 + pulse, 0, Math.PI * 2);
     ctx.fill();
+
+    // Inner swirl rings
+    if (canEnter) {
+      ctx.strokeStyle = 'rgba(206, 147, 216, 0.5)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) {
+        const sr = 6 + i * 4 + Math.sin(t * 3 + i) * 2;
+        ctx.beginPath();
+        ctx.arc(px, py, sr, t * 2 + i * 2, t * 2 + i * 2 + Math.PI * 1.2);
+        ctx.stroke();
+      }
+    }
     ctx.shadowBlur = 0;
+
     // Door icon
     ctx.fillStyle = '#311B92';
     ctx.fillRect(px - 6, py - 10, 12, 18);
@@ -630,25 +773,48 @@ function drawOverworld() {
     ctx.beginPath();
     ctx.arc(px + 3, py, 2, 0, Math.PI * 2);
     ctx.fill();
+
+    // Status text with hearts progress
     if (!canEnter) {
-      drawText('Fill hearts!', px, py - 22, '#FF5722', 10, 'center');
+      drawText(`${currentHearts}/${maxHearts} hearts`, px, py - 24, '#FF5722', 10, 'center');
     } else {
-      drawText('Enter!', px, py - 22, '#FFD700', 11, 'center');
+      drawText('Enter!', px, py - 24, '#FFD700', 12, 'center');
     }
   }
 
-  // Heart pickups
+  // Heart pickups with glow and shadow
   heartPickups.forEach(h => {
     if (h.collected) return;
     const hx = h.x * TILE + TILE / 2;
     const hy = h.y * TILE + TILE / 2;
-    const bob = Math.sin(Date.now() / 400 + h.x) * 3;
-    drawHeart(hx, hy + bob, 10, '#FF1744');
+    const bob = Math.sin(t * 2.5 + h.x + h.y * 0.7) * 4;
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(hx, hy + 12, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Glow
+    ctx.shadowColor = '#FF1744';
+    ctx.shadowBlur = 10;
+    drawHeart(hx, hy + bob - 4, 10, '#FF1744');
+    ctx.shadowBlur = 0;
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.arc(hx - 3, hy + bob - 9, 2.5, 0, Math.PI * 2);
+    ctx.fill();
   });
 
-  // Player
+  // Player with ground shadow
+  const pfx = player.x * TILE + TILE / 2;
+  const pfy = player.y * TILE + TILE / 2;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(pfx + 2, pfy + TILE / 2 - 4, 14, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
   const facing = input.left ? 'left' : input.right ? 'right' : 'down';
-  drawAvatar(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, TILE - 4, getRank(totalKeys), facing);
+  drawAvatar(pfx, pfy, TILE - 4, getRank(totalKeys), facing);
 }
 
 function drawHeart(cx, cy, size, color) {
@@ -1318,9 +1484,10 @@ function updateHUD() {
       `;
     } else {
       const nextRank = rank < RANKS.length - 1 ? RANKS[rank + 1] : null;
+      const canEnter = currentHearts >= maxHearts;
       hudRight.innerHTML = `
         <div>Level ${level + 1} - Overworld</div>
-        <div>Fill hearts then enter the mansion!</div>
+        <div>${canEnter ? '<span style="color:#FFD700">Hearts full! Find the mansion portal!</span>' : `Collect hearts (${currentHearts}/${maxHearts}) to enter mansion`}</div>
         ${nextRank ? `<div style="color:${nextRank.color}">Next: ${nextRank.name} (${nextRank.threshold} keys)</div>` : ''}
       `;
     }
