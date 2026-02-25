@@ -23,12 +23,43 @@ const RANKS = [
 ];
 
 const MOVE_DATA = {
-  'Slap':         { dmg: 1, color: '#fff' },
-  'Punch':        { dmg: 2, color: '#FFA726' },
-  'Fireball':     { dmg: 3, color: '#FF5722' },
-  'Thunder':      { dmg: 4, color: '#FFEB3B' },
-  'Void Strike':  { dmg: 5, color: '#CE93D8' },
-  'Divine Wrath': { dmg: 8, color: '#00E5FF' },
+  'Slap':         { dmg: 1, color: '#fff',    element: 'physical', cooldown: 0 },
+  'Punch':        { dmg: 2, color: '#FFA726', element: 'physical', cooldown: 0 },
+  'Fireball':     { dmg: 3, color: '#FF5722', element: 'fire',     cooldown: 1 },
+  'Thunder':      { dmg: 4, color: '#FFEB3B', element: 'electric', cooldown: 2 },
+  'Void Strike':  { dmg: 5, color: '#CE93D8', element: 'shadow',   cooldown: 2 },
+  'Divine Wrath': { dmg: 8, color: '#00E5FF', element: 'divine',   cooldown: 3 },
+  'Defend':       { dmg: 0, color: '#4FC3F7', element: 'none',     cooldown: 0 },
+};
+
+// Element effectiveness: attacker element -> defender weakness
+const ELEMENT_CHART = {
+  fire:     { strong: 'ice',    weak: 'fire' },
+  electric: { strong: 'poison', weak: 'shadow' },
+  shadow:   { strong: 'shadow', weak: 'poison' },
+  divine:   { strong: 'all',    weak: 'none' },
+  physical: { strong: 'none',   weak: 'none' },
+};
+
+const MONSTER_ELEMENTS = {
+  'Shadow Rat':  'shadow',
+  'Ghoul':       'poison',
+  'Phantom':     'ice',
+  'Wraith':      'shadow',
+  'Dark Knight': 'fire',
+  'Demon Lord':  'poison',
+};
+
+const ELEMENT_COLORS = {
+  fire: '#FF5722', ice: '#4FC3F7', shadow: '#9C27B0',
+  poison: '#8BC34A', physical: '#999', electric: '#FFEB3B',
+  divine: '#00E5FF',
+};
+
+const ELEMENT_ICONS = {
+  fire: '\u{1F525}', ice: '\u{2744}\u{FE0F}', shadow: '\u{1F47B}',
+  poison: '\u{2620}\u{FE0F}', physical: '\u{1F44A}', electric: '\u{26A1}',
+  divine: '\u{2728}',
 };
 
 // ── Game State ───────────────────────────────────────────────
@@ -83,6 +114,14 @@ let particles = [];
 let shakeTimer = 0;
 let shakeIntensity = 0;
 let monstersDefeated = 0;
+let moveCooldowns = {};       // { 'Fireball': 0, 'Thunder': 2, ... }
+let monsterStance = 'attack'; // 'attack' | 'heavy' | 'guard'
+let monsterNextStance = 'attack';
+let playerDefending = false;
+let monsterElement = 'shadow';
+let comboCount = 0;           // consecutive same-element hits
+let lastElement = '';
+let turnNumber = 0;
 let monstersRequired = 0;    // how many kills needed to complete level
 let monsterRespawnTimer = 0;
 let maxMonstersAlive = 0;    // cap on simultaneous alive monsters
@@ -169,8 +208,7 @@ canvas.addEventListener('touchstart', function(e) {
       e.preventDefault();
       btnB.classList.add('active');
       if (gameState === STATE.COMBAT && combatTurn === 'player') {
-        const rank = getRank(totalKeys);
-        const maxMoves = Math.min(RANKS[rank].moves.length, 4);
+        const maxMoves = Math.min(getCombatMoves().length, 5);
         selectedMove = (selectedMove + 1) % maxMoves;
         updateMoveButtons();
       }
@@ -185,15 +223,25 @@ function updateMoveButtons() {
   const moveBtnsEl = document.getElementById('moveBtns');
   if (!moveBtnsEl) return;
   if (gameState === STATE.COMBAT && combatTurn === 'player') {
-    const rank = getRank(totalKeys);
-    const moves = RANKS[rank].moves;
-    const max = Math.min(moves.length, 4);
+    const moves = getCombatMoves();
+    const max = Math.min(moves.length, 5);
     moveBtnsEl.style.display = 'flex';
     moveBtnsEl.innerHTML = '';
     for (let i = 0; i < max; i++) {
+      const move = moves[i];
+      const md = MOVE_DATA[move];
+      const onCooldown = moveCooldowns[move] && moveCooldowns[move] > 0;
+      const eff = move !== 'Defend' ? getEffectiveness(md.element, monsterElement) : 0;
       const btn = document.createElement('div');
       btn.className = 'move-btn' + (i === selectedMove ? ' selected' : '');
-      btn.textContent = moves[i] + ' (' + MOVE_DATA[moves[i]].dmg + ')';
+      let label = move;
+      if (move === 'Defend') { label = 'Defend'; }
+      else if (onCooldown) { label = move + ' (CD:' + moveCooldowns[move] + ')'; }
+      else if (eff >= 2) { label = move + ' x2!'; }
+      else if (eff <= 0.5) { label = move + ' x.5'; }
+      else { label = move + ' (' + md.dmg + ')'; }
+      btn.textContent = label;
+      if (onCooldown) btn.style.opacity = '0.4';
       btn.addEventListener('touchstart', (function(idx) {
         return function(e) {
           e.preventDefault();
@@ -1728,11 +1776,40 @@ function startCombat(monster) {
   monsterHP = monster.hp;
   monsterMaxHP = monster.maxHp;
   playerCombatHP = currentHearts;
-  combatMessage = `A wild ${monster.name} appeared!`;
+  monsterElement = MONSTER_ELEMENTS[monster.name] || 'shadow';
+  combatMessage = `A wild ${monster.name} appeared! ${ELEMENT_ICONS[monsterElement]} ${monsterElement} type`;
   combatTurn = 'player';
   combatAnimTimer = 0;
   selectedMove = 0;
+  playerDefending = false;
+  turnNumber = 0;
+  comboCount = 0;
+  lastElement = '';
+  // Reset cooldowns
+  moveCooldowns = {};
+  // Pick monster's first stance
+  monsterStance = 'attack';
+  monsterNextStance = pickMonsterStance();
   gameState = STATE.COMBAT;
+}
+
+function pickMonsterStance() {
+  const r = Math.random();
+  // Higher levels use heavy/guard more often
+  const heavyChance = 0.15 + level * 0.05;
+  const guardChance = 0.10 + level * 0.04;
+  if (r < heavyChance) return 'heavy';
+  if (r < heavyChance + guardChance) return 'guard';
+  return 'attack';
+}
+
+function getEffectiveness(moveElement, monElement) {
+  if (moveElement === 'physical' || moveElement === 'none') return 1;
+  const chart = ELEMENT_CHART[moveElement];
+  if (!chart) return 1;
+  if (chart.strong === 'all' || chart.strong === monElement) return 2;
+  if (chart.weak === monElement) return 0.5;
+  return 1;
 }
 
 function drawCombat() {
@@ -1786,8 +1863,36 @@ function drawCombat() {
   ctx.strokeStyle = '#666';
   ctx.lineWidth = 1;
   ctx.strokeRect(monX - 50, monY - 60, 100, 10);
-  drawText(currentMonster.name, monX, monY - 70, '#FF8A65', 14, 'center');
-  drawText(`${monsterHP}/${monsterMaxHP}`, monX, monY - 45, '#fff', 11, 'center');
+  // Monster name + element
+  const elColor = ELEMENT_COLORS[monsterElement] || '#888';
+  const elIcon = ELEMENT_ICONS[monsterElement] || '';
+  drawText(`${currentMonster.name} ${elIcon}`, monX, monY - 72, '#FF8A65', 14, 'center');
+  drawText(`${monsterHP}/${monsterMaxHP}  ${monsterElement.toUpperCase()}`, monX, monY - 45, elColor, 11, 'center');
+
+  // Monster stance indicator
+  if (combatTurn === 'player' || combatTurn === 'player_hit') {
+    let stanceText = '';
+    let stanceColor = '#888';
+    if (monsterStance === 'heavy') {
+      stanceText = 'CHARGING HEAVY!';
+      stanceColor = '#FF5722';
+    } else if (monsterStance === 'guard') {
+      stanceText = 'GUARDING';
+      stanceColor = '#4FC3F7';
+    } else {
+      stanceText = 'Attacking';
+      stanceColor = '#FF8A65';
+    }
+    // Stance badge
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    roundRect(monX - 50, monY + 30, 100, 20, 4);
+    ctx.fill();
+    ctx.strokeStyle = stanceColor;
+    ctx.lineWidth = 1;
+    roundRect(monX - 50, monY + 30, 100, 20, 4);
+    ctx.stroke();
+    drawText(stanceText, monX, monY + 44, stanceColor, 11, 'center');
+  }
 
   // Player avatar (left side)
   const plX = W * 0.25;
@@ -1795,14 +1900,26 @@ function drawCombat() {
   if (flashColor && combatTurn === 'player_hit') {
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(combatAnimTimer * 20);
   }
+  // Defense aura when defending
+  if (playerDefending) {
+    ctx.fillStyle = 'rgba(79, 195, 247, 0.15)';
+    ctx.beginPath();
+    ctx.arc(plX, plY, 50, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(plX, plY, 48, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   drawAvatar(plX, plY, 70, getRank(totalKeys));
   ctx.globalAlpha = 1;
 
   // Player hearts
   for (let i = 0; i < maxHearts; i++) {
-    const hx = plX - 30 + i * 22;
+    const hx = plX - 45 + i * 20;
     const hy = plY - 55;
-    drawHeart(hx, hy, 8, i < playerCombatHP ? '#FF1744' : '#333');
+    drawHeart(hx, hy, 7, i < playerCombatHP ? '#FF1744' : '#333');
   }
   drawText(RANKS[getRank(totalKeys)].name, plX, plY - 70, RANKS[getRank(totalKeys)].color, 14, 'center');
 
@@ -1810,33 +1927,66 @@ function drawCombat() {
   ctx.fillStyle = 'rgba(0,0,0,0.8)';
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 2;
-  roundRect(30, H - 200, W - 60, 80, 10);
+  roundRect(30, H - 200, W - 60, 70, 10);
   ctx.fill();
   ctx.stroke();
-  drawText(combatMessage, W / 2, H - 155, '#fff', 16, 'center');
+  drawText(combatMessage, W / 2, H - 162, '#fff', 14, 'center');
 
   // Move selection (only during player turn)
   if (combatTurn === 'player') {
-    const rank = getRank(totalKeys);
-    const moves = RANKS[rank].moves;
-    const boxW = 160;
-    const boxH = 40;
-    const startX = 50;
-    const startY = H - 105;
+    const moves = getCombatMoves();
+    const maxMoves = Math.min(moves.length, 5);
+    const boxW = Math.min(145, (W - 60) / maxMoves - 6);
+    const boxH = 50;
+    const totalW = maxMoves * (boxW + 5) - 5;
+    const startX = (W - totalW) / 2;
+    const startY = H - 118;
 
-    drawText('Choose your move:', startX, startY - 8, '#aaa', 13);
-    for (let i = 0; i < Math.min(moves.length, 4); i++) {
-      const bx = startX + i * (boxW + 10);
+    for (let i = 0; i < maxMoves; i++) {
+      const move = moves[i];
+      const md = MOVE_DATA[move];
+      const bx = startX + i * (boxW + 5);
       const by = startY;
       const isSelected = i === selectedMove;
-      ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
-      ctx.strokeStyle = isSelected ? MOVE_DATA[moves[i]].color : '#444';
+      const onCooldown = moveCooldowns[move] && moveCooldowns[move] > 0;
+      const eff = move !== 'Defend' ? getEffectiveness(md.element, monsterElement) : 0;
+
+      // Box background
+      ctx.fillStyle = onCooldown ? 'rgba(60,60,60,0.5)' : isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = onCooldown ? '#333' : isSelected ? md.color : '#444';
       ctx.lineWidth = isSelected ? 2 : 1;
       roundRect(bx, by, boxW, boxH, 6);
       ctx.fill();
       ctx.stroke();
-      drawText(`${i + 1}. ${moves[i]}`, bx + 10, by + 15, MOVE_DATA[moves[i]].color, 13);
-      drawText(`DMG: ${MOVE_DATA[moves[i]].dmg}`, bx + 10, by + 30, '#888', 11);
+
+      // Move name
+      const nameColor = onCooldown ? '#555' : md.color;
+      drawText(move, bx + 4, by + 14, nameColor, 11);
+
+      if (move === 'Defend') {
+        drawText('Block 50%', bx + 4, by + 28, '#4FC3F7', 9);
+        drawText('No damage', bx + 4, by + 40, '#888', 9);
+      } else {
+        // Damage + effectiveness
+        let effLabel = '';
+        let effColor = '#888';
+        if (eff >= 2) { effLabel = ' x2!'; effColor = '#4CAF50'; }
+        else if (eff <= 0.5) { effLabel = ' x0.5'; effColor = '#F44336'; }
+        drawText(`DMG:${md.dmg}${effLabel}`, bx + 4, by + 28, effColor, 9);
+
+        // Cooldown or element
+        if (onCooldown) {
+          drawText(`CD: ${moveCooldowns[move]}`, bx + 4, by + 40, '#F44336', 9);
+        } else {
+          const eIcon = ELEMENT_ICONS[md.element] || '';
+          drawText(`${eIcon} ${md.element}`, bx + 4, by + 40, ELEMENT_COLORS[md.element] || '#888', 9);
+        }
+      }
+
+      // Key number label
+      if (i < 4) {
+        drawText(`${i + 1}`, bx + boxW - 12, by + 12, isSelected ? '#fff' : '#555', 10);
+      }
     }
   }
 
@@ -1844,27 +1994,93 @@ function drawCombat() {
   drawParticles();
 }
 
+function getCombatMoves() {
+  const rank = getRank(totalKeys);
+  const moves = RANKS[rank].moves.slice();
+  moves.push('Defend');
+  return moves;
+}
+
 function updateCombat(dt) {
   if (combatTurn === 'player') {
-    const rank = getRank(totalKeys);
-    const moves = RANKS[rank].moves;
-    const maxMoves = Math.min(moves.length, 4);
+    const moves = getCombatMoves();
+    const maxMoves = Math.min(moves.length, 5);
 
     // Move selection with number keys
-    for (let i = 0; i < maxMoves; i++) {
+    for (let i = 0; i < Math.min(maxMoves, 4); i++) {
       if (justPressed.moves[i]) selectedMove = i;
     }
     if (input.left && selectedMove > 0) { selectedMove--; input.left = false; }
     if (input.right && selectedMove < maxMoves - 1) { selectedMove++; input.right = false; }
 
-    // Execute attack
+    // Execute action
     if (justPressed.space || justPressed.enter) {
       const move = moves[selectedMove];
-      const dmg = MOVE_DATA[move].dmg;
-      monsterHP -= dmg;
-      combatMessage = `You used ${move}! Dealt ${dmg} damage!`;
-      spawnParticle(W * 0.65, H * 0.35, MOVE_DATA[move].color, 15);
-      screenShake(3, 0.2);
+      const moveData = MOVE_DATA[move];
+
+      // Check cooldown
+      if (moveCooldowns[move] && moveCooldowns[move] > 0) {
+        combatMessage = `${move} is on cooldown! (${moveCooldowns[move]} turns)`;
+        return;
+      }
+
+      turnNumber++;
+      playerDefending = false;
+
+      if (move === 'Defend') {
+        // Defend action
+        playerDefending = true;
+        combatMessage = 'You brace for impact! (Damage halved)';
+        spawnParticle(W * 0.25, H * 0.45, '#4FC3F7', 8);
+        lastElement = '';
+        comboCount = 0;
+      } else {
+        // Attack action
+        let baseDmg = moveData.dmg;
+
+        // Element effectiveness
+        const effectiveness = getEffectiveness(moveData.element, monsterElement);
+        let finalDmg = Math.max(1, Math.round(baseDmg * effectiveness));
+
+        // Monster guard stance halves damage
+        if (monsterStance === 'guard') {
+          finalDmg = Math.max(1, Math.floor(finalDmg * 0.5));
+        }
+
+        // Combo penalty: using same element 3+ times in a row reduces damage
+        if (moveData.element === lastElement && moveData.element !== 'physical') {
+          comboCount++;
+          if (comboCount >= 3) {
+            finalDmg = Math.max(1, Math.floor(finalDmg * 0.5));
+          }
+        } else {
+          comboCount = 1;
+          lastElement = moveData.element;
+        }
+
+        monsterHP -= finalDmg;
+
+        // Build message
+        let msg = `${move} dealt ${finalDmg} dmg!`;
+        if (effectiveness >= 2) msg += ' SUPER EFFECTIVE!';
+        else if (effectiveness <= 0.5) msg += ' Not very effective...';
+        if (monsterStance === 'guard') msg += ' (Guarded)';
+        if (comboCount >= 3) msg += ' (Stale)';
+        combatMessage = msg;
+
+        spawnParticle(W * 0.65, H * 0.35, moveData.color, effectiveness >= 2 ? 25 : 15);
+        screenShake(effectiveness >= 2 ? 5 : 3, effectiveness >= 2 ? 0.3 : 0.2);
+
+        // Set cooldown
+        if (moveData.cooldown > 0) {
+          moveCooldowns[move] = moveData.cooldown + 1; // +1 because we tick down this turn
+        }
+      }
+
+      // Tick all cooldowns
+      for (const m in moveCooldowns) {
+        if (moveCooldowns[m] > 0) moveCooldowns[m]--;
+      }
 
       if (monsterHP <= 0) {
         monsterHP = 0;
@@ -1879,12 +2095,38 @@ function updateCombat(dt) {
   } else if (combatTurn === 'monster_hit') {
     combatAnimTimer += dt;
     if (combatAnimTimer > 0.5) {
-      // Monster attacks back
-      const dmg = 1;
-      playerCombatHP -= dmg;
-      combatMessage = `${currentMonster.name} attacks! You lost a heart!`;
-      spawnParticle(W * 0.25, H * 0.45, '#FF0000', 12);
-      screenShake(4, 0.25);
+      // Monster attacks based on current stance
+      let baseDmg = 0;
+      let stanceMsg = '';
+      if (monsterStance === 'attack') {
+        baseDmg = 1;
+        stanceMsg = `${currentMonster.name} attacks!`;
+      } else if (monsterStance === 'heavy') {
+        baseDmg = 2;
+        stanceMsg = `${currentMonster.name} unleashes a HEAVY BLOW!`;
+      } else if (monsterStance === 'guard') {
+        baseDmg = 0;
+        stanceMsg = `${currentMonster.name} was guarding (no attack).`;
+      }
+
+      // Player defend halves damage
+      let finalDmg = baseDmg;
+      if (playerDefending && baseDmg > 0) {
+        finalDmg = Math.max(0, Math.floor(baseDmg * 0.5));
+        stanceMsg += finalDmg > 0 ? ' Blocked some!' : ' Fully blocked!';
+      }
+
+      if (finalDmg > 0) {
+        playerCombatHP -= finalDmg;
+        stanceMsg += ` -${finalDmg} heart${finalDmg > 1 ? 's' : ''}!`;
+        spawnParticle(W * 0.25, H * 0.45, '#FF0000', 12);
+        screenShake(baseDmg >= 2 ? 6 : 4, 0.25);
+      }
+      combatMessage = stanceMsg;
+
+      // Advance monster stance for next turn
+      monsterStance = monsterNextStance;
+      monsterNextStance = pickMonsterStance();
 
       if (playerCombatHP <= 0) {
         playerCombatHP = 0;
@@ -1899,7 +2141,12 @@ function updateCombat(dt) {
     combatAnimTimer += dt;
     if (combatAnimTimer > 0.5) {
       combatTurn = 'player';
-      combatMessage = 'Your turn! Choose a move.';
+      // Show next stance telegraph
+      let hint = 'Your turn!';
+      if (monsterStance === 'heavy') hint += ' WARNING: Charging heavy attack!';
+      else if (monsterStance === 'guard') hint += ' Enemy is guarding...';
+      else hint += ' Enemy preparing to attack.';
+      combatMessage = hint;
     }
   } else if (combatTurn === 'monster_dying') {
     combatAnimTimer += dt;
