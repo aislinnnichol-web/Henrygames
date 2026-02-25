@@ -85,6 +85,60 @@ let keysThisLevel = 0;
 let keysNeeded = 10;
 let selectedMove = 0;
 
+// ── Level Modifiers (each level plays differently) ──────────
+const LEVEL_THEMES = [
+  {
+    name: 'The Forgotten Cellar',
+    modifier: 'none',
+    desc: 'A quiet start... clear the rats.',
+    overworldSky: ['#6BB3E0', '#87CEEB', '#7BC67E'],
+    mansionHue: 0,
+    fogRadius: 250,
+  },
+  {
+    name: 'The Blinding Dark',
+    modifier: 'darkness',
+    desc: 'Reduced visibility. Stay close to torches!',
+    overworldSky: ['#3a5a7a', '#5577a0', '#4a7a4e'],
+    mansionHue: 240,
+    fogRadius: 120,
+  },
+  {
+    name: 'The Swarming Halls',
+    modifier: 'swarm',
+    desc: 'Monsters are faster and more aggressive.',
+    overworldSky: ['#8B4513', '#CD853F', '#6B8E23'],
+    mansionHue: 30,
+    fogRadius: 220,
+  },
+  {
+    name: 'The Spiked Gauntlet',
+    modifier: 'trapped',
+    desc: 'Spikes everywhere! Watch your step.',
+    overworldSky: ['#555', '#777', '#4a5a3a'],
+    mansionHue: 120,
+    fogRadius: 200,
+  },
+  {
+    name: 'The Phantom Keep',
+    modifier: 'phasing',
+    desc: 'Monsters phase through walls to hunt you.',
+    overworldSky: ['#2a0a3a', '#4a2a5a', '#3a5a3e'],
+    mansionHue: 280,
+    fogRadius: 180,
+  },
+  {
+    name: 'The Final Stand',
+    modifier: 'chaos',
+    desc: 'All hazards combined. Good luck.',
+    overworldSky: ['#1a0000', '#3a0000', '#2a1a00'],
+    mansionHue: 0,
+    fogRadius: 140,
+  },
+];
+
+function getTheme() { return LEVEL_THEMES[Math.min(level, LEVEL_THEMES.length - 1)]; }
+
 // Overworld & mansion maps
 let overworldEntities = [];
 let mansionEntities = [];
@@ -172,16 +226,95 @@ function storeInput() {
   for (let i = 0; i < 4; i++) prevInput.moves[i] = input.moves[i];
 }
 
-// ── Canvas Tap (for menu screens on mobile) ─────────────────
+// ── Direct Canvas Touch (tap-to-move, swipe, combat tap) ────
+let touchTarget = null;       // { x, y } tile target for tap-to-move
+let touchStartPos = null;     // { x, y } screen coords for swipe detection
+let touchStartTime = 0;
+
+function canvasTouchToTile(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const tx = (e.changedTouches[0].clientX - rect.left) * scaleX;
+  const ty = (e.changedTouches[0].clientY - rect.top) * scaleY;
+  return { px: tx, py: ty, tileX: Math.floor(tx / TILE), tileY: Math.floor(ty / TILE) };
+}
+
 canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  const touch = e.changedTouches[0];
+  touchStartPos = { x: touch.clientX, y: touch.clientY };
+  touchStartTime = Date.now();
+
+  // Menu screens: tap to continue
   if (gameState === STATE.TITLE || gameState === STATE.MANSION_ENTER ||
       gameState === STATE.LEVEL_UP || gameState === STATE.GAME_OVER || gameState === STATE.WIN) {
-    e.preventDefault();
     input.space = true;
     input.enter = true;
     setTimeout(() => { input.space = false; input.enter = false; }, 100);
+    return;
+  }
+
+  // Combat: tap on a move box to select + confirm
+  if (gameState === STATE.COMBAT && combatTurn === 'player') {
+    const pos = canvasTouchToTile(e);
+    const moves = getCombatMoves();
+    const maxMoves = Math.min(moves.length, 5);
+    const boxW = Math.min(145, (W - 60) / maxMoves - 6);
+    const boxH = 50;
+    const totalBW = maxMoves * (boxW + 5) - 5;
+    const startX = (W - totalBW) / 2;
+    const startY = H - 118;
+    for (let i = 0; i < maxMoves; i++) {
+      const bx = startX + i * (boxW + 5);
+      if (pos.px >= bx && pos.px <= bx + boxW && pos.py >= startY && pos.py <= startY + boxH) {
+        selectedMove = i;
+        // Tap to select; double-tap same move to confirm (or tap A)
+        input.space = true;
+        input.enter = true;
+        setTimeout(() => { input.space = false; input.enter = false; }, 100);
+        return;
+      }
+    }
+    return;
+  }
+
+  // Overworld / Mansion: set tap target (move toward it)
+  if (gameState === STATE.OVERWORLD || gameState === STATE.MANSION) {
+    const pos = canvasTouchToTile(e);
+    touchTarget = { x: pos.tileX, y: pos.tileY };
   }
 }, { passive: false });
+
+canvas.addEventListener('touchend', function(e) {
+  e.preventDefault();
+  if (!touchStartPos) return;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartPos.x;
+  const dy = touch.clientY - touchStartPos.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const elapsed = Date.now() - touchStartTime;
+
+  // Swipe detection: fast enough drag > 30px
+  if (dist > 30 && elapsed < 400 && (gameState === STATE.OVERWORLD || gameState === STATE.MANSION)) {
+    touchTarget = null; // cancel tap target, use swipe instead
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal swipe
+      if (dx > 0) { input.right = true; setTimeout(() => { input.right = false; }, 120); }
+      else { input.left = true; setTimeout(() => { input.left = false; }, 120); }
+    } else {
+      // Vertical swipe
+      if (dy > 0) { input.down = true; setTimeout(() => { input.down = false; }, 120); }
+      else { input.up = true; setTimeout(() => { input.up = false; }, 120); }
+    }
+  }
+  touchStartPos = null;
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', function() {
+  touchStartPos = null;
+  touchTarget = null;
+});
 
 // ── Touch Input ─────────────────────────────────────────────
 (function setupTouch() {
@@ -274,6 +407,7 @@ function startTransition(callback) {
   transitionAlpha = 0;
   transitionDir = 1;
   transitionCallback = callback;
+  touchTarget = null;
 }
 
 function spawnParticle(x, y, color, count) {
@@ -902,11 +1036,12 @@ function updateTitle() {
 
 // ── Scene: Overworld ─────────────────────────────────────────
 function drawOverworld() {
-  // Sky gradient with clouds feel
+  // Sky gradient themed per level
+  const sky = getTheme().overworldSky;
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#6BB3E0');
-  grad.addColorStop(0.4, '#87CEEB');
-  grad.addColorStop(1, '#7BC67E');
+  grad.addColorStop(0, sky[0]);
+  grad.addColorStop(0.4, sky[1]);
+  grad.addColorStop(1, sky[2]);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
@@ -1194,6 +1329,17 @@ function drawOverworld() {
   // Player with ground shadow
   const pfx = player.x * TILE + TILE / 2;
   const pfy = player.y * TILE + TILE / 2;
+  // Tap target indicator
+  if (touchTarget) {
+    const ttx = touchTarget.x * TILE + TILE / 2;
+    const tty = touchTarget.y * TILE + TILE / 2;
+    const pulse = 0.4 + 0.3 * Math.sin(Date.now() / 200);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ttx, tty, 12, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
@@ -1216,6 +1362,22 @@ function drawHeart(cx, cy, size, color) {
 
 function updateOverworld(dt) {
   if (player.moveCD > 0) { player.moveCD -= dt; return; }
+
+  // Tap-to-move: inject directional input toward touch target
+  if (touchTarget && !input.up && !input.down && !input.left && !input.right) {
+    const dx = touchTarget.x - player.x;
+    const dy = touchTarget.y - player.y;
+    if (dx === 0 && dy === 0) { touchTarget = null; }
+    else {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        if (dx > 0) input.right = true; else input.left = true;
+      } else {
+        if (dy > 0) input.down = true; else input.up = true;
+      }
+      // Auto-release after one step
+      setTimeout(() => { input.up = false; input.down = false; input.left = false; input.right = false; }, 80);
+    }
+  }
 
   let nx = player.x;
   let ny = player.y;
@@ -1312,11 +1474,14 @@ function drawMansionEnter() {
   ctx.fillRect(0, 400, W, 200);
 
   // Text
+  const theme = getTheme();
   ctx.shadowColor = '#F44336';
   ctx.shadowBlur = 10;
-  drawTextBold('The Haunted Mansion', W / 2, 80, '#FF5722', 32, 'center');
+  drawTextBold(theme.name, W / 2, 70, '#FF5722', 32, 'center');
   ctx.shadowBlur = 0;
-  drawText(`Level ${level + 1} — Collect 10 keys & defeat the monsters!`, W / 2, 460, '#888', 16, 'center');
+  drawText(`Level ${level + 1}`, W / 2, 440, '#aaa', 18, 'center');
+  drawText(theme.desc, W / 2, 466, '#FF8A65', 15, 'center');
+  drawText('Collect 10 keys & defeat the monsters!', W / 2, 490, '#888', 14, 'center');
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
@@ -1532,12 +1697,14 @@ function drawMansion() {
     }
   }
 
-  // Fog / darkness overlay (vignette around player)
+  // Fog / darkness overlay (vignette around player) — tighter on dark levels
+  const theme = getTheme();
+  const fogR = theme.fogRadius;
   const pgx = player.x * TILE + TILE / 2;
   const pgy = player.y * TILE + TILE / 2;
-  const fogGrad = ctx.createRadialGradient(pgx, pgy, 60, pgx, pgy, 250);
+  const fogGrad = ctx.createRadialGradient(pgx, pgy, fogR * 0.25, pgx, pgy, fogR);
   fogGrad.addColorStop(0, 'rgba(0,0,0,0)');
-  fogGrad.addColorStop(1, 'rgba(0,0,0,0.75)');
+  fogGrad.addColorStop(1, fogR <= 140 ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.75)');
   ctx.fillStyle = fogGrad;
   ctx.fillRect(0, 0, W, H);
 
@@ -1651,6 +1818,18 @@ function drawMansion() {
     }
   });
 
+  // Tap target indicator
+  if (touchTarget) {
+    const ttx = touchTarget.x * TILE + TILE / 2;
+    const tty = touchTarget.y * TILE + TILE / 2;
+    const pulse = 0.4 + 0.3 * Math.sin(Date.now() / 200);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ttx, tty, 12, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   // Player
   const facing = input.left ? 'left' : input.right ? 'right' : 'down';
   drawAvatar(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, TILE - 4, getRank(totalKeys), facing);
@@ -1661,6 +1840,21 @@ function drawMansion() {
 
 function updateMansion(dt) {
   if (player.moveCD > 0) { player.moveCD -= dt; return; }
+
+  // Tap-to-move: inject directional input toward touch target
+  if (touchTarget && !input.up && !input.down && !input.left && !input.right) {
+    const dx = touchTarget.x - player.x;
+    const dy = touchTarget.y - player.y;
+    if (dx === 0 && dy === 0) { touchTarget = null; }
+    else {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        if (dx > 0) input.right = true; else input.left = true;
+      } else {
+        if (dy > 0) input.down = true; else input.up = true;
+      }
+      setTimeout(() => { input.up = false; input.down = false; input.left = false; input.right = false; }, 80);
+    }
+  }
 
   let nx = player.x;
   let ny = player.y;
@@ -1678,8 +1872,10 @@ function updateMansion(dt) {
     player.y = ny;
     player.moveCD = 0.12;
 
-    // Spike damage (small chance to lose half a heart equivalent)
-    if (destTile === 'spikes' && Math.random() < 0.3) {
+    // Spike damage — higher chance on trapped/chaos levels
+    const spikeMod = getTheme().modifier;
+    const spikeChance = (spikeMod === 'trapped' || spikeMod === 'chaos') ? 0.6 : 0.3;
+    if (destTile === 'spikes' && Math.random() < spikeChance) {
       currentHearts = Math.max(0, currentHearts - 1);
       spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#AAA', 6);
       screenShake(2, 0.1);
@@ -1724,14 +1920,19 @@ function updateMansion(dt) {
     }
   }
 
-  // Move monsters toward player slowly
+  // Move monsters toward player — speed/behavior depends on level modifier
+  const mod = getTheme().modifier;
+  const moveSpeed = (mod === 'swarm' || mod === 'chaos') ? 0.35 : 0.6;
+  const chaseChance = (mod === 'swarm' || mod === 'chaos') ? 0.85 : 0.6;
+  const canPhase = (mod === 'phasing' || mod === 'chaos');
+
   monsters.forEach(m => {
     if (!m.alive) return;
     m.moveTimer += dt;
-    if (m.moveTimer > 0.6) {
+    if (m.moveTimer > moveSpeed) {
       m.moveTimer = 0;
       let mx = m.x, my = m.y;
-      if (Math.random() < 0.6) {
+      if (Math.random() < chaseChance) {
         // Move toward player
         if (player.x > m.x) mx++;
         else if (player.x < m.x) mx--;
@@ -1745,7 +1946,7 @@ function updateMansion(dt) {
       mx = clamp(mx, 1, COLS - 2);
       my = clamp(my, 1, ROWS - 2);
       const mtile = mansionMap[my][mx];
-      if (mtile !== 'wall' && mtile !== 'pillar' && mtile !== 'crate') {
+      if (canPhase || (mtile !== 'wall' && mtile !== 'pillar' && mtile !== 'crate')) {
         m.x = mx;
         m.y = my;
       }
