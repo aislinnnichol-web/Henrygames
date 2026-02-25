@@ -82,6 +82,12 @@ let mansionDoorPos = null;
 let particles = [];
 let shakeTimer = 0;
 let shakeIntensity = 0;
+let monstersDefeated = 0;
+let monstersRequired = 0;    // how many kills needed to complete level
+let monsterRespawnTimer = 0;
+let maxMonstersAlive = 0;    // cap on simultaneous alive monsters
+let torches = [];             // mansion torch positions for lighting
+let ambientParticles = [];    // dust motes / fireflies
 
 // ── Input ────────────────────────────────────────────────────
 const input = { up: false, down: false, left: false, right: false, space: false, enter: false, moves: [false,false,false,false] };
@@ -327,6 +333,9 @@ function generateMansion() {
   keys = [];
   monsters = [];
   mansionObstacles = [];
+  torches = [];
+  monstersDefeated = 0;
+  monsterRespawnTimer = 0;
   // Dark floor with walls
   for (let r = 0; r < ROWS; r++) {
     mansionMap[r] = [];
@@ -338,14 +347,48 @@ function generateMansion() {
       }
     }
   }
-  // Internal walls / obstacles
-  for (let i = 0; i < 12 + level * 3; i++) {
+  // Internal walls (more than before)
+  for (let i = 0; i < 16 + level * 4; i++) {
     let c, r;
     do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
       mansionMap[r][c] !== 'floor'
     );
     mansionMap[r][c] = 'wall';
     mansionObstacles.push({ x: c, y: r });
+  }
+  // Pillars (new obstacle type - decorative stone pillars)
+  for (let i = 0; i < 3 + level; i++) {
+    let c, r;
+    do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
+      mansionMap[r][c] !== 'floor'
+    );
+    mansionMap[r][c] = 'pillar';
+    mansionObstacles.push({ x: c, y: r, type: 'pillar' });
+  }
+  // Crates (breakable-looking obstacles)
+  for (let i = 0; i < 2 + level; i++) {
+    let c, r;
+    do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
+      mansionMap[r][c] !== 'floor'
+    );
+    mansionMap[r][c] = 'crate';
+    mansionObstacles.push({ x: c, y: r, type: 'crate' });
+  }
+  // Spike traps (walkable but visual hazard tiles)
+  for (let i = 0; i < 4 + level * 2; i++) {
+    let c, r;
+    do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
+      mansionMap[r][c] !== 'floor'
+    );
+    mansionMap[r][c] = 'spikes';
+  }
+  // Torches along walls for atmospheric lighting
+  for (let r = 2; r < ROWS - 2; r += 3) {
+    if (mansionMap[r][1] === 'wall') torches.push({ x: 1, y: r });
+    if (mansionMap[r][COLS - 2] === 'wall') torches.push({ x: COLS - 2, y: r });
+  }
+  for (let c = 3; c < COLS - 3; c += 4) {
+    if (mansionMap[1][c] === 'wall') torches.push({ x: c, y: 1 });
   }
   // Place 10 keys
   for (let i = 0; i < 10; i++) {
@@ -356,7 +399,9 @@ function generateMansion() {
     keys.push({ x: c, y: r, collected: false });
   }
   // Monsters (scales with level)
-  let monsterCount = 2 + level;
+  let monsterCount = 3 + level;
+  monstersRequired = monsterCount;
+  maxMonstersAlive = monsterCount;
   for (let i = 0; i < monsterCount; i++) {
     let c, r;
     do { c = rand(3, COLS - 4); r = rand(3, ROWS - 4); } while (
@@ -371,7 +416,7 @@ function generateMansion() {
     });
   }
   // Heart pickups inside mansion (heal between fights)
-  let mansionHearts = 2 + level;
+  let mansionHearts = 3 + level;
   for (let i = 0; i < mansionHearts; i++) {
     let c, r;
     do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
@@ -382,6 +427,29 @@ function generateMansion() {
   // Door back (bottom-left)
   mansionDoorPos = { x: 1, y: ROWS - 2 };
   mansionMap[ROWS - 2][1] = 'door';
+}
+
+function spawnRespawnMonster() {
+  let c, r, tries = 0;
+  do {
+    c = rand(3, COLS - 4);
+    r = rand(3, ROWS - 4);
+    tries++;
+  } while (
+    (mansionMap[r][c] !== 'floor' || dist({ x: c, y: r }, player) < 5) && tries < 50
+  );
+  if (tries >= 50) return; // no valid spot found
+  const respawnHp = Math.max(1, 1 + Math.floor(level * 0.7));
+  monsters.push({
+    x: c, y: r, alive: true,
+    hp: respawnHp,
+    maxHp: respawnHp,
+    name: getMonsterName(level),
+    moveTimer: 0,
+    respawned: true,
+  });
+  // Spawn effect
+  spawnParticle(c * TILE + TILE / 2, r * TILE + TILE / 2, '#FF0000', 8);
 }
 
 function getMonsterName(lvl) {
@@ -567,20 +635,33 @@ function drawStar(cx, cy, innerR, outerR, points) {
 function drawMonster(cx, cy, size, lvl) {
   const s = size;
   const half = s / 2;
+  const t = Date.now() / 1000;
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Shadowy body
-  const monColors = ['#666', '#8B0000', '#4B0082', '#2F4F4F', '#800080', '#B22222'];
-  ctx.fillStyle = monColors[Math.min(lvl, monColors.length - 1)];
-  ctx.shadowColor = '#FF0000';
-  ctx.shadowBlur = 8 + lvl * 2;
+  // Breathing animation
+  const breathe = 1 + Math.sin(t * 2.5) * 0.04;
+  ctx.scale(breathe, breathe);
 
-  // Spiky shape
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(3, half - 2, half * 0.7, half * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Aura glow (pulsing)
+  const monColors = ['#666', '#8B0000', '#4B0082', '#2F4F4F', '#800080', '#B22222'];
+  const baseColor = monColors[Math.min(lvl, monColors.length - 1)];
+  ctx.shadowColor = '#FF0000';
+  ctx.shadowBlur = 10 + lvl * 3 + Math.sin(t * 3) * 4;
+
+  // Spiky body with animated wobble
+  ctx.fillStyle = baseColor;
   ctx.beginPath();
   const spikes = 5 + lvl;
   for (let i = 0; i < spikes * 2; i++) {
-    const r = i % 2 === 0 ? half : half * 0.55;
+    const wobble = i % 2 === 0 ? Math.sin(t * 4 + i * 0.5) * 2 : 0;
+    const r = (i % 2 === 0 ? half : half * 0.55) + wobble;
     const a = (Math.PI / spikes) * i - Math.PI / 2;
     const px = r * Math.cos(a);
     const py = r * Math.sin(a);
@@ -590,17 +671,66 @@ function drawMonster(cx, cy, size, lvl) {
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Evil eyes
-  ctx.fillStyle = '#FF0000';
+  // Inner body pattern (darker core)
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
-  ctx.arc(-half * 0.25, -half * 0.1, s * 0.1, 0, Math.PI * 2);
-  ctx.arc(half * 0.25, -half * 0.1, s * 0.1, 0, Math.PI * 2);
+  ctx.arc(0, 0, half * 0.45, 0, Math.PI * 2);
   ctx.fill();
+
+  // Vein-like lines from center
+  ctx.strokeStyle = 'rgba(255,0,0,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < spikes; i++) {
+    const a = (Math.PI * 2 / spikes) * i + t * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * half * 0.7, Math.sin(a) * half * 0.7);
+    ctx.stroke();
+  }
+
+  // Evil eyes (animated - track slightly)
+  const eyeTrack = Math.sin(t * 1.5) * 1.5;
+  ctx.fillStyle = '#FF0000';
+  ctx.shadowColor = '#FF0000';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(-half * 0.25, -half * 0.1, s * 0.11, 0, Math.PI * 2);
+  ctx.arc(half * 0.25, -half * 0.1, s * 0.11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // Pupils
   ctx.fillStyle = '#FFD700';
   ctx.beginPath();
-  ctx.arc(-half * 0.25, -half * 0.1, s * 0.04, 0, Math.PI * 2);
-  ctx.arc(half * 0.25, -half * 0.1, s * 0.04, 0, Math.PI * 2);
+  ctx.arc(-half * 0.25 + eyeTrack, -half * 0.1, s * 0.05, 0, Math.PI * 2);
+  ctx.arc(half * 0.25 + eyeTrack, -half * 0.1, s * 0.05, 0, Math.PI * 2);
   ctx.fill();
+  // Eye shine
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.arc(-half * 0.25 - 1, -half * 0.1 - 2, s * 0.025, 0, Math.PI * 2);
+  ctx.arc(half * 0.25 - 1, -half * 0.1 - 2, s * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Menacing mouth (for higher levels)
+  if (lvl >= 2) {
+    ctx.strokeStyle = '#FF0000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const mw = half * 0.3;
+    ctx.moveTo(-mw, half * 0.2);
+    ctx.quadraticCurveTo(0, half * 0.35 + Math.sin(t * 4) * 2, mw, half * 0.2);
+    ctx.stroke();
+    // Teeth
+    ctx.fillStyle = '#FFF';
+    for (let i = 0; i < 3; i++) {
+      const tx2 = -mw + 0.3 * mw + i * mw * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(tx2, half * 0.2);
+      ctx.lineTo(tx2 + 3, half * 0.28);
+      ctx.lineTo(tx2 + 6, half * 0.2);
+      ctx.fill();
+    }
+  }
 
   ctx.restore();
 }
@@ -956,6 +1086,40 @@ function drawOverworld() {
     }
   }
 
+  // Floating clouds (parallax)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  for (let i = 0; i < 4; i++) {
+    const cx = ((i * 230 + t * 12) % (W + 100)) - 50;
+    const cy = 20 + i * 35 + Math.sin(t * 0.3 + i) * 8;
+    const cw = 60 + i * 15;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, cw, 12 + i * 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - cw * 0.3, cy + 3, cw * 0.5, 10 + i, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + cw * 0.35, cy + 2, cw * 0.4, 8 + i, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Butterflies
+  for (let i = 0; i < 3; i++) {
+    const bx = (i * 280 + Math.sin(t * 0.7 + i * 3) * 60 + t * 15) % W;
+    const by = 100 + i * 80 + Math.sin(t * 1.5 + i * 2) * 30;
+    const wingFlap = Math.sin(t * 8 + i * 4) * 6;
+    const bColors = ['#FF69B4', '#FFD700', '#87CEEB'];
+    ctx.fillStyle = bColors[i];
+    ctx.beginPath();
+    ctx.ellipse(bx - 4, by, 4, Math.abs(wingFlap), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(bx + 4, by, 4, Math.abs(wingFlap), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#333';
+    ctx.fillRect(bx - 0.5, by - 3, 1, 6);
+  }
+
   // Heart pickups with glow and shadow
   heartPickups.forEach(h => {
     if (h.collected || h.mansion) return;
@@ -1178,7 +1342,6 @@ function drawMansion() {
         case 'cobweb':
           ctx.fillStyle = '#1a1520';
           ctx.fillRect(tx, ty, TILE, TILE);
-          // 3D cobweb with glow
           ctx.strokeStyle = 'rgba(200, 200, 200, 0.2)';
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -1191,12 +1354,104 @@ function drawMansion() {
           ctx.moveTo(tx, ty + TILE / 2);
           ctx.lineTo(tx + TILE, ty + TILE / 2);
           ctx.stroke();
-          // Center dot
           ctx.fillStyle = 'rgba(200,200,200,0.15)';
           ctx.beginPath();
           ctx.arc(tx + TILE / 2, ty + TILE / 2, 2, 0, Math.PI * 2);
           ctx.fill();
           break;
+        case 'pillar': {
+          // Floor underneath
+          ctx.fillStyle = `hsl(270, 5%, ${15 + ((r + c) % 2) * 3}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // 3D stone pillar
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.beginPath();
+          ctx.ellipse(tx + TILE / 2 + 3, ty + TILE - 4, 14, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // Pillar body gradient
+          const pillarGrad = ctx.createLinearGradient(tx + 8, ty, tx + TILE - 8, ty);
+          pillarGrad.addColorStop(0, '#4a4a5a');
+          pillarGrad.addColorStop(0.3, '#6a6a7a');
+          pillarGrad.addColorStop(0.7, '#5a5a6a');
+          pillarGrad.addColorStop(1, '#3a3a4a');
+          ctx.fillStyle = pillarGrad;
+          ctx.fillRect(tx + 10, ty + 4, TILE - 20, TILE - 8);
+          // Capital (top) and base
+          ctx.fillStyle = '#7a7a8a';
+          ctx.fillRect(tx + 7, ty + 2, TILE - 14, 6);
+          ctx.fillRect(tx + 7, ty + TILE - 8, TILE - 14, 6);
+          // Highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
+          ctx.fillRect(tx + 12, ty + 6, 4, TILE - 16);
+          break;
+        }
+        case 'crate': {
+          // Floor underneath
+          ctx.fillStyle = `hsl(270, 5%, ${15 + ((r + c) % 2) * 3}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          // Shadow
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.fillRect(tx + 6, ty + TILE - 6, TILE - 8, 6);
+          // 3D wooden crate - top face
+          ctx.fillStyle = '#8B6914';
+          ctx.fillRect(tx + 4, ty + 4, TILE - 8, TILE - 10);
+          // Right face
+          ctx.fillStyle = '#6B4F10';
+          ctx.fillRect(tx + TILE - 8, ty + 6, 4, TILE - 14);
+          // Bottom face
+          ctx.fillStyle = '#5A4010';
+          ctx.fillRect(tx + 4, ty + TILE - 10, TILE - 8, 4);
+          // Cross planks
+          ctx.strokeStyle = '#9B7924';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(tx + 6, ty + 6);
+          ctx.lineTo(tx + TILE - 10, ty + TILE - 12);
+          ctx.moveTo(tx + TILE - 10, ty + 6);
+          ctx.lineTo(tx + 6, ty + TILE - 12);
+          ctx.stroke();
+          // Nails
+          ctx.fillStyle = '#CCC';
+          ctx.beginPath();
+          ctx.arc(tx + TILE / 2, ty + TILE / 2 - 3, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
+        case 'spikes': {
+          // Floor underneath
+          const sf = 15 + ((r + c) % 2) * 3;
+          ctx.fillStyle = `hsl(270, 5%, ${sf}%)`;
+          ctx.fillRect(tx, ty, TILE, TILE);
+          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(tx + 1, ty + 1, TILE - 2, TILE - 2);
+          // Spike triangles
+          const t2 = Date.now() / 1000;
+          const spikeAlpha = 0.5 + 0.3 * Math.sin(t2 * 3 + c + r);
+          ctx.fillStyle = `rgba(180, 180, 180, ${spikeAlpha})`;
+          for (let sx = 0; sx < 3; sx++) {
+            for (let sy = 0; sy < 3; sy++) {
+              const spx = tx + 6 + sx * 12;
+              const spy = ty + 6 + sy * 12;
+              ctx.beginPath();
+              ctx.moveTo(spx, spy + 8);
+              ctx.lineTo(spx + 4, spy);
+              ctx.lineTo(spx + 8, spy + 8);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+          // Metallic highlight
+          ctx.fillStyle = `rgba(255, 255, 255, ${spikeAlpha * 0.3})`;
+          for (let sx = 0; sx < 3; sx++) {
+            for (let sy = 0; sy < 3; sy++) {
+              ctx.beginPath();
+              ctx.arc(tx + 10 + sx * 12, ty + 8 + sy * 12, 1, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          break;
+        }
         case 'door': {
           ctx.fillStyle = '#1a1520';
           ctx.fillRect(tx, ty, TILE, TILE);
@@ -1238,6 +1493,58 @@ function drawMansion() {
   ctx.fillStyle = fogGrad;
   ctx.fillRect(0, 0, W, H);
 
+  // Torch light effects (warm glow on walls)
+  const tNow = Date.now() / 1000;
+  torches.forEach(torch => {
+    const tcx = torch.x * TILE + TILE / 2;
+    const tcy = torch.y * TILE + TILE / 2;
+    const flicker = 0.7 + 0.3 * Math.sin(tNow * 8 + torch.x * 3 + torch.y * 7);
+    const radius = 70 + Math.sin(tNow * 5 + torch.x) * 10;
+    // Warm light circle
+    const torchGrad = ctx.createRadialGradient(tcx, tcy, 5, tcx, tcy, radius);
+    torchGrad.addColorStop(0, `rgba(255, 140, 40, ${0.25 * flicker})`);
+    torchGrad.addColorStop(0.5, `rgba(255, 100, 20, ${0.1 * flicker})`);
+    torchGrad.addColorStop(1, 'rgba(255, 80, 0, 0)');
+    ctx.fillStyle = torchGrad;
+    ctx.fillRect(tcx - radius, tcy - radius, radius * 2, radius * 2);
+    // Torch bracket (on wall)
+    ctx.fillStyle = '#555';
+    ctx.fillRect(tcx - 2, tcy - 6, 4, 8);
+    // Flame
+    ctx.fillStyle = `rgba(255, ${150 + Math.floor(flicker * 50)}, 0, ${flicker})`;
+    ctx.beginPath();
+    ctx.moveTo(tcx - 4, tcy - 6);
+    ctx.quadraticCurveTo(tcx + Math.sin(tNow * 10 + torch.x) * 3, tcy - 18, tcx + 4, tcy - 6);
+    ctx.fill();
+    // Flame core
+    ctx.fillStyle = `rgba(255, 255, 100, ${flicker * 0.8})`;
+    ctx.beginPath();
+    ctx.moveTo(tcx - 2, tcy - 6);
+    ctx.quadraticCurveTo(tcx + Math.sin(tNow * 12 + torch.x) * 1.5, tcy - 13, tcx + 2, tcy - 6);
+    ctx.fill();
+    // Ember particles near torch
+    for (let e = 0; e < 2; e++) {
+      const ex = tcx + Math.sin(tNow * 4 + e * 5 + torch.x) * 8;
+      const ey = tcy - 14 - (tNow * 20 + e * 15 + torch.y * 7) % 20;
+      const ea = Math.max(0, 1 - ((tNow * 20 + e * 15 + torch.y * 7) % 20) / 20);
+      ctx.fillStyle = `rgba(255, 180, 50, ${ea * 0.6})`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 1.5 * ea, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Ambient dust motes floating in the mansion
+  for (let i = 0; i < 15; i++) {
+    const dx = (i * 137 + tNow * 8) % W;
+    const dy = (i * 89 + Math.sin(tNow * 0.5 + i) * 40 + 200) % H;
+    const da = 0.1 + 0.1 * Math.sin(tNow + i * 2);
+    ctx.fillStyle = `rgba(200, 180, 140, ${da})`;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 1 + Math.sin(tNow * 2 + i) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Mansion heart pickups
   heartPickups.forEach(h => {
     if (h.collected || !h.mansion) return;
@@ -1269,10 +1576,31 @@ function drawMansion() {
     ctx.shadowBlur = 0;
   });
 
-  // Monsters
+  // Monsters with ground shadow and HP indicator
   monsters.forEach(m => {
     if (!m.alive) return;
-    drawMonster(m.x * TILE + TILE / 2, m.y * TILE + TILE / 2, TILE - 6, level);
+    const mx = m.x * TILE + TILE / 2;
+    const my = m.y * TILE + TILE / 2;
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(mx + 2, my + TILE / 2 - 4, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawMonster(mx, my, TILE - 6, level);
+    // Mini HP bar above monster
+    const barW = TILE - 10;
+    const hpPct = m.hp / m.maxHp;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(mx - barW / 2, my - TILE / 2 - 4, barW, 3);
+    ctx.fillStyle = hpPct > 0.5 ? '#4CAF50' : hpPct > 0.25 ? '#FF9800' : '#F44336';
+    ctx.fillRect(mx - barW / 2, my - TILE / 2 - 4, barW * hpPct, 3);
+    // Respawned indicator (dimmer)
+    if (m.respawned) {
+      ctx.fillStyle = 'rgba(100,100,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(mx, my - TILE / 2 - 8, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   });
 
   // Player
@@ -1295,11 +1623,23 @@ function updateMansion(dt) {
 
   if (nx !== player.x || ny !== player.y) {
     if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
-    if (mansionMap[ny][nx] === 'wall') return;
+    const destTile = mansionMap[ny][nx];
+    if (destTile === 'wall' || destTile === 'pillar' || destTile === 'crate') return;
 
     player.x = nx;
     player.y = ny;
     player.moveCD = 0.12;
+
+    // Spike damage (small chance to lose half a heart equivalent)
+    if (destTile === 'spikes' && Math.random() < 0.3) {
+      currentHearts = Math.max(0, currentHearts - 1);
+      spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#AAA', 6);
+      screenShake(2, 0.1);
+      if (currentHearts <= 0) {
+        gameState = STATE.GAME_OVER;
+        return;
+      }
+    }
 
     // Pick up keys
     keys.forEach(k => {
@@ -1329,7 +1669,7 @@ function updateMansion(dt) {
 
     // Check exit
     if (mansionDoorPos && player.x === mansionDoorPos.x && player.y === mansionDoorPos.y) {
-      if (keysThisLevel >= keysNeeded && monsters.every(m => !m.alive)) {
+      if (keysThisLevel >= keysNeeded && monstersDefeated >= monstersRequired) {
         // Level complete!
         levelUp();
       }
@@ -1356,7 +1696,8 @@ function updateMansion(dt) {
       }
       mx = clamp(mx, 1, COLS - 2);
       my = clamp(my, 1, ROWS - 2);
-      if (mansionMap[my][mx] !== 'wall') {
+      const mtile = mansionMap[my][mx];
+      if (mtile !== 'wall' && mtile !== 'pillar' && mtile !== 'crate') {
         m.x = mx;
         m.y = my;
       }
@@ -1366,6 +1707,19 @@ function updateMansion(dt) {
       }
     }
   });
+
+  // Monster respawn logic
+  const aliveCount = monsters.filter(m => m.alive).length;
+  if (aliveCount < maxMonstersAlive && monstersDefeated < monstersRequired) {
+    // Don't respawn yet, player still needs to defeat originals
+  } else if (aliveCount < Math.max(1, Math.floor(maxMonstersAlive * 0.5)) && monstersDefeated >= monstersRequired) {
+    // After beating required count, respawn weaker monsters to keep tension
+    monsterRespawnTimer += dt;
+    if (monsterRespawnTimer > 6) {
+      monsterRespawnTimer = 0;
+      spawnRespawnMonster();
+    }
+  }
 }
 
 // ── Combat ───────────────────────────────────────────────────
@@ -1551,12 +1905,13 @@ function updateCombat(dt) {
     combatAnimTimer += dt;
     if (combatAnimTimer > 1.2) {
       currentMonster.alive = false;
+      if (!currentMonster.respawned) monstersDefeated++;
       playerCombatHP = Math.min(playerCombatHP + 1, maxHearts);
       currentHearts = playerCombatHP;
       startTransition(() => {
         gameState = STATE.MANSION;
         // Check for level complete
-        if (keysThisLevel >= keysNeeded && monsters.every(m => !m.alive)) {
+        if (keysThisLevel >= keysNeeded && monstersDefeated >= monstersRequired) {
           levelUp();
         }
       });
@@ -1755,7 +2110,7 @@ function updateHUD() {
       hudRight.innerHTML = `
         <div style="color:#FF5722">Haunted Mansion - Level ${level + 1}</div>
         <div style="color:#FFD700">Keys: ${keysThisLevel}/10</div>
-        <div>Monsters: ${alive} remaining</div>
+        <div>Defeated: ${monstersDefeated}/${monstersRequired}${alive > 0 ? ' ('+alive+' roaming)' : ''}</div>
       `;
     } else {
       const nextRank = rank < RANKS.length - 1 ? RANKS[rank + 1] : null;
