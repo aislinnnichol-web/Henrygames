@@ -181,6 +181,24 @@ let monsterRespawnTimer = 0;
 let maxMonstersAlive = 0;    // cap on simultaneous alive monsters
 let torches = [];             // mansion torch positions for lighting
 let ambientParticles = [];    // dust motes / fireflies
+let momNPC = null;            // Mom NPC position & state
+let momMessage = '';          // current message from Mom
+let momMessageTimer = 0;      // display timer
+
+const MOM_TIPS = [
+  "Watch the monster's stance — Defend against heavy attacks!",
+  "Use elemental weaknesses for double damage!",
+  "Don't spam the same move — mix it up or damage drops!",
+  "Powerful moves have cooldowns. Use Slap or Punch in between!",
+  "Mansion hearts are scarce. Pick your fights carefully!",
+  "Shadow monsters are weak to Void Strike!",
+  "Poison types hate Thunder — zap them!",
+  "Ice monsters melt to Fireball!",
+  "If a monster is guarding, save your strong move for next turn.",
+  "You've got this, Henry! I believe in you!",
+  "Losing a fight costs 2 keys — be careful!",
+  "Defend when you see CHARGING HEAVY! Trust me!",
+];
 
 // ── Input ────────────────────────────────────────────────────
 const input = { up: false, down: false, left: false, right: false, space: false, enter: false, moves: [false,false,false,false] };
@@ -609,6 +627,17 @@ function generateMansion() {
   // Door back (bottom-left)
   mansionDoorPos = { x: 1, y: ROWS - 2 };
   mansionMap[ROWS - 2][1] = 'door';
+
+  // Place Mom NPC in a safe spot
+  let mc, mr, mTries = 0;
+  do {
+    mc = rand(3, COLS - 4);
+    mr = rand(3, ROWS - 4);
+    mTries++;
+  } while ((mansionMap[mr][mc] !== 'floor' || dist({ x: mc, y: mr }, { x: 1, y: ROWS - 2 }) < 4) && mTries < 50);
+  momNPC = { x: mc, y: mr, talked: false };
+  momMessage = '';
+  momMessageTimer = 0;
 }
 
 function spawnRespawnMonster() {
@@ -685,93 +714,262 @@ function drawAvatar(cx, cy, size, rankIdx, facing) {
   const rank = RANKS[rankIdx];
   const s = size;
   const half = s / 2;
+  const t = Date.now() / 1000;
 
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Body base
-  ctx.fillStyle = rank.color;
-  ctx.beginPath();
-  if (rankIdx <= 1) {
-    // Noob / Amateur: simple round body
-    ctx.arc(0, 0, half, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (rankIdx === 2) {
-    // Pro: rounded square with shoulder pads
-    roundRect(-half, -half, s, s, 6);
-    ctx.fill();
-    ctx.fillStyle = '#FF6F00';
-    ctx.fillRect(-half - 4, -half + 4, 5, 10);
-    ctx.fillRect(half - 1, -half + 4, 5, 10);
-  } else if (rankIdx === 3) {
-    // Master: diamond-ish shape with aura
+  // === Rank aura effects ===
+  if (rankIdx >= 3) {
     ctx.shadowColor = rank.color;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 8 + rankIdx * 3 + Math.sin(t * 3) * 4;
+    ctx.strokeStyle = rank.color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t * 2);
     ctx.beginPath();
-    ctx.moveTo(0, -half);
-    ctx.lineTo(half, 0);
-    ctx.lineTo(0, half);
-    ctx.lineTo(-half, 0);
+    ctx.arc(0, 0, half + 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // === Cape (Master+) ===
+  if (rankIdx >= 3) {
+    const capeColors = { 3: '#C62828', 4: '#6A1B9A', 5: '#00838F' };
+    ctx.fillStyle = capeColors[rankIdx] || '#C62828';
+    const capeWave = Math.sin(t * 3) * 2;
+    ctx.beginPath();
+    ctx.moveTo(-half * 0.4, -half * 0.05);
+    ctx.quadraticCurveTo(-half * 0.7, half * 0.4 + capeWave, -half * 0.5, half * 0.85);
+    ctx.lineTo(half * 0.5, half * 0.85);
+    ctx.quadraticCurveTo(half * 0.7, half * 0.4 - capeWave, half * 0.4, -half * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // === Body (shirt) — color upgrades with rank ===
+  const shirtColors = ['#4CAF50', '#2196F3', '#FF9800', '#C62828', '#7B1FA2', '#00BCD4'];
+  ctx.fillStyle = shirtColors[rankIdx] || '#4CAF50';
+  roundRect(-half * 0.45, -half * 0.05, half * 0.9, half * 0.65, 3);
+  ctx.fill();
+
+  // === Armor overlay (Pro+) ===
+  if (rankIdx >= 2) {
+    const armorColors = { 2: 'rgba(150,150,150,0.5)', 3: 'rgba(192,192,192,0.6)', 4: 'rgba(180,130,255,0.5)', 5: 'rgba(0,229,255,0.5)' };
+    ctx.fillStyle = armorColors[rankIdx] || 'rgba(150,150,150,0.4)';
+    roundRect(-half * 0.4, -half * 0.02, half * 0.8, half * 0.45, 2);
+    ctx.fill();
+    // Shoulder guards
+    ctx.fillStyle = armorColors[rankIdx] || 'rgba(150,150,150,0.4)';
+    ctx.beginPath();
+    ctx.arc(-half * 0.45, half * 0.05, half * 0.15, 0, Math.PI * 2);
+    ctx.arc(half * 0.45, half * 0.05, half * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // === Head (skin) ===
+  ctx.fillStyle = '#FFCCB0';
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.3, half * 0.38, 0, Math.PI * 2);
+  ctx.fill();
+
+  // === Hair (brown, slightly messy) ===
+  ctx.fillStyle = '#5D4037';
+  // Top hair dome
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.42, half * 0.4, Math.PI, 0);
+  ctx.fill();
+  // Side tufts
+  ctx.beginPath();
+  ctx.ellipse(-half * 0.32, -half * 0.35, half * 0.12, half * 0.22, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(half * 0.32, -half * 0.35, half * 0.12, half * 0.22, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  // Front fringe
+  ctx.fillStyle = '#4E342E';
+  ctx.beginPath();
+  ctx.ellipse(0, -half * 0.52, half * 0.28, half * 0.1, 0, 0, Math.PI);
+  ctx.fill();
+
+  // === Crown (God rank) ===
+  if (rankIdx >= 5) {
+    ctx.fillStyle = '#FFD700';
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur = 8;
+    const crY = -half * 0.68;
+    ctx.beginPath();
+    ctx.moveTo(-half * 0.25, crY + half * 0.12);
+    ctx.lineTo(-half * 0.25, crY);
+    ctx.lineTo(-half * 0.15, crY + half * 0.06);
+    ctx.lineTo(0, crY - half * 0.06);
+    ctx.lineTo(half * 0.15, crY + half * 0.06);
+    ctx.lineTo(half * 0.25, crY);
+    ctx.lineTo(half * 0.25, crY + half * 0.12);
     ctx.closePath();
     ctx.fill();
     ctx.shadowBlur = 0;
-  } else if (rankIdx === 4) {
-    // Hacker: glitchy hexagon
-    ctx.shadowColor = '#E040FB';
-    ctx.shadowBlur = 18;
-    drawHexagon(0, 0, half);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    // Glitch lines
-    ctx.strokeStyle = '#00FF00';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 3; i++) {
-      const yy = -half + Math.random() * s;
-      ctx.beginPath();
-      ctx.moveTo(-half, yy);
-      ctx.lineTo(half, yy);
-      ctx.stroke();
-    }
-  } else {
-    // God: radiant star with glow
-    ctx.shadowColor = '#00E5FF';
-    ctx.shadowBlur = 25;
-    drawStar(0, 0, half * 0.5, half, 6);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    // Inner glow
-    ctx.fillStyle = '#fff';
-    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(Date.now() / 200);
+    // Gems on crown
+    ctx.fillStyle = '#E53935';
     ctx.beginPath();
-    ctx.arc(0, 0, half * 0.3, 0, Math.PI * 2);
+    ctx.arc(0, crY + half * 0.02, 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
   }
+
+  // === Eyes ===
+  const lookX = facing === 'left' ? -1.5 : facing === 'right' ? 1.5 : 0;
+  // Whites
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(-half * 0.15, -half * 0.3, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
+  ctx.ellipse(half * 0.15, -half * 0.3, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Irises (brown)
+  ctx.fillStyle = '#5D4037';
+  ctx.beginPath();
+  ctx.arc(-half * 0.15 + lookX, -half * 0.3, half * 0.055, 0, Math.PI * 2);
+  ctx.arc(half * 0.15 + lookX, -half * 0.3, half * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+  // Pupils
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(-half * 0.15 + lookX, -half * 0.3, half * 0.025, 0, Math.PI * 2);
+  ctx.arc(half * 0.15 + lookX, -half * 0.3, half * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+  // Eye shine
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath();
+  ctx.arc(-half * 0.18, -half * 0.32, half * 0.02, 0, Math.PI * 2);
+  ctx.arc(half * 0.12, -half * 0.32, half * 0.02, 0, Math.PI * 2);
+  ctx.fill();
+
+  // === Smile ===
+  ctx.strokeStyle = '#A1887F';
+  ctx.lineWidth = Math.max(1, s * 0.025);
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.22, half * 0.12, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+
+  // === Legs ===
+  ctx.fillStyle = '#3E2723';
+  ctx.fillRect(-half * 0.3, half * 0.55, half * 0.2, half * 0.35);
+  ctx.fillRect(half * 0.1, half * 0.55, half * 0.2, half * 0.35);
+  // Shoes
+  ctx.fillStyle = rankIdx >= 4 ? '#7B1FA2' : '#795548';
+  ctx.fillRect(-half * 0.35, half * 0.85, half * 0.3, half * 0.1);
+  ctx.fillRect(half * 0.05, half * 0.85, half * 0.3, half * 0.1);
+
+  // === Sword (Hacker+) ===
+  if (rankIdx >= 4) {
+    const swordSide = facing === 'left' ? -1 : 1;
+    ctx.save();
+    ctx.translate(half * 0.55 * swordSide, -half * 0.1);
+    ctx.rotate(swordSide * 0.3 + Math.sin(t * 2) * 0.1);
+    // Blade
+    ctx.fillStyle = rankIdx >= 5 ? '#00E5FF' : '#B0BEC5';
+    ctx.fillRect(-1.5, -half * 0.6, 3, half * 0.5);
+    // Guard
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(-4, -half * 0.12, 8, 3);
+    // Handle
+    ctx.fillStyle = '#5D4037';
+    ctx.fillRect(-1, -half * 0.08, 2, half * 0.15);
+    ctx.restore();
+  }
+
+  // === God sparkles ===
+  if (rankIdx >= 5) {
+    for (let i = 0; i < 6; i++) {
+      const sa = t * 2 + i * Math.PI / 3;
+      const sr = half * 0.7 + Math.sin(t * 3 + i) * 5;
+      const sx = Math.cos(sa) * sr;
+      const sy = Math.sin(sa) * sr;
+      ctx.fillStyle = `rgba(0, 229, 255, ${0.4 + 0.3 * Math.sin(t * 4 + i)})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+// ── Mom NPC Drawing ─────────────────────────────────────────
+function drawMom(cx, cy, size) {
+  const s = size;
+  const half = s / 2;
+  const t = Date.now() / 1000;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Gentle glow
+  ctx.shadowColor = '#FF80AB';
+  ctx.shadowBlur = 8 + Math.sin(t * 2) * 3;
+
+  // Body (dress)
+  ctx.fillStyle = '#AD1457';
+  ctx.beginPath();
+  ctx.moveTo(-half * 0.45, -half * 0.05);
+  ctx.lineTo(-half * 0.55, half * 0.85);
+  ctx.lineTo(half * 0.55, half * 0.85);
+  ctx.lineTo(half * 0.45, -half * 0.05);
+  ctx.closePath();
+  ctx.fill();
+  // Top
+  ctx.fillStyle = '#C2185B';
+  roundRect(-half * 0.4, -half * 0.1, half * 0.8, half * 0.4, 3);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Head (skin)
+  ctx.fillStyle = '#FFCCB0';
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.32, half * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair (long, dark brown)
+  ctx.fillStyle = '#3E2723';
+  // Top dome
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.42, half * 0.38, Math.PI, 0);
+  ctx.fill();
+  // Side hair flowing down
+  ctx.beginPath();
+  ctx.ellipse(-half * 0.35, -half * 0.15, half * 0.13, half * 0.4, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(half * 0.35, -half * 0.15, half * 0.13, half * 0.4, 0.15, 0, Math.PI * 2);
+  ctx.fill();
 
   // Eyes
   ctx.fillStyle = '#fff';
-  const eyeOff = rankIdx >= 3 ? 0 : half * 0.25;
-  const eyeY = rankIdx >= 3 ? -half * 0.15 : -half * 0.1;
   ctx.beginPath();
-  ctx.arc(-eyeOff, eyeY, s * 0.1, 0, Math.PI * 2);
-  ctx.arc(eyeOff, eyeY, s * 0.1, 0, Math.PI * 2);
+  ctx.ellipse(-half * 0.13, -half * 0.32, half * 0.08, half * 0.06, 0, 0, Math.PI * 2);
+  ctx.ellipse(half * 0.13, -half * 0.32, half * 0.08, half * 0.06, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#222';
+  ctx.fillStyle = '#5D4037';
   ctx.beginPath();
-  ctx.arc(-eyeOff + (facing === 'left' ? -1 : facing === 'right' ? 1 : 0), eyeY, s * 0.05, 0, Math.PI * 2);
-  ctx.arc(eyeOff + (facing === 'left' ? -1 : facing === 'right' ? 1 : 0), eyeY, s * 0.05, 0, Math.PI * 2);
+  ctx.arc(-half * 0.13, -half * 0.32, half * 0.04, 0, Math.PI * 2);
+  ctx.arc(half * 0.13, -half * 0.32, half * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+  // Eye shine
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath();
+  ctx.arc(-half * 0.15, -half * 0.34, half * 0.015, 0, Math.PI * 2);
+  ctx.arc(half * 0.11, -half * 0.34, half * 0.015, 0, Math.PI * 2);
   ctx.fill();
 
-  // Level indicator ring for high ranks
-  if (rankIdx >= 2) {
-    ctx.strokeStyle = rank.color;
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(Date.now() / 300);
-    ctx.beginPath();
-    ctx.arc(0, 0, half + 4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
+  // Warm smile
+  ctx.strokeStyle = '#A1887F';
+  ctx.lineWidth = Math.max(1, s * 0.025);
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.24, half * 0.1, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+
+  // Heart icon floating above (hint she gives help)
+  const bob = Math.sin(t * 2) * 3;
+  drawHeart(0, -half * 0.75 + bob, half * 0.12, '#FF80AB');
 
   ctx.restore();
 }
@@ -1012,18 +1210,24 @@ function drawTitle() {
   drawTextBold('Rise of the God', W / 2, 230, '#CE93D8', 28, 'center');
   ctx.shadowBlur = 0;
 
-  // Animated avatar preview
+  // Henry (rank cycles through to show progression)
   const aIdx = Math.floor((Date.now() / 1500) % 6);
-  drawAvatar(W / 2, 340, 50, aIdx);
-  drawText(RANKS[aIdx].name, W / 2, 390, RANKS[aIdx].color, 18, 'center');
+  drawAvatar(W / 2 - 60, 330, 55, aIdx);
+  drawText('Henry', W / 2 - 60, 380, '#FFD700', 14, 'center');
+  drawText(RANKS[aIdx].name, W / 2 - 60, 398, RANKS[aIdx].color, 12, 'center');
+
+  // Mom
+  drawMom(W / 2 + 60, 335, 50);
+  drawText('Mom', W / 2 + 60, 380, '#FF80AB', 14, 'center');
+  drawText('Guide', W / 2 + 60, 398, '#888', 12, 'center');
 
   // Prompt (touch-friendly)
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawTextBold('Tap or Press ENTER to Start', W / 2, 480, '#fff', 22, 'center');
+  drawTextBold('Tap or Press ENTER to Start', W / 2, 460, '#fff', 22, 'center');
   ctx.globalAlpha = 1;
 
-  drawText('Collect keys. Fight monsters. Become a God.', W / 2, 530, '#888', 14, 'center');
+  drawText("Help Henry collect keys and conquer the mansion!", W / 2, 510, '#888', 14, 'center');
 }
 
 function updateTitle() {
@@ -1791,6 +1995,36 @@ function drawMansion() {
     ctx.shadowBlur = 0;
   });
 
+  // Mom NPC
+  if (momNPC) {
+    const momX = momNPC.x * TILE + TILE / 2;
+    const momY = momNPC.y * TILE + TILE / 2;
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(momX + 1, momY + TILE / 2 - 4, 10, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawMom(momX, momY, TILE - 4);
+    // "Mom" label
+    drawText('Mom', momX, momY - TILE / 2 - 2, '#FF80AB', 10, 'center');
+  }
+
+  // Mom message bubble
+  if (momMessage && momMessageTimer > 0) {
+    const bubbleW = Math.min(W - 40, ctx.measureText ? 320 : 320);
+    const bubbleH = 50;
+    const bubbleX = (W - bubbleW) / 2;
+    const bubbleY = 20;
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeStyle = '#FF80AB';
+    ctx.lineWidth = 2;
+    roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 8);
+    ctx.fill();
+    ctx.stroke();
+    drawText('Mom:', bubbleX + 10, bubbleY + 18, '#FF80AB', 12);
+    drawText(momMessage, bubbleX + 10, bubbleY + 36, '#fff', 12);
+  }
+
   // Monsters with ground shadow and HP indicator
   monsters.forEach(m => {
     if (!m.alive) return;
@@ -1839,6 +2073,7 @@ function drawMansion() {
 }
 
 function updateMansion(dt) {
+  if (momMessageTimer > 0) momMessageTimer -= dt;
   if (player.moveCD > 0) { player.moveCD -= dt; return; }
 
   // Tap-to-move: inject directional input toward touch target
@@ -1903,6 +2138,17 @@ function updateMansion(dt) {
         spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
       }
     });
+
+    // Mom NPC interaction — gives a strategic tip
+    if (momNPC && player.x === momNPC.x && player.y === momNPC.y) {
+      momMessage = MOM_TIPS[Math.floor(Math.random() * MOM_TIPS.length)];
+      momMessageTimer = 4;
+      // Heal 1 heart as Mom's care
+      if (currentHearts < maxHearts) {
+        currentHearts = Math.min(currentHearts + 1, maxHearts);
+        spawnParticle(momNPC.x * TILE + TILE / 2, momNPC.y * TILE + TILE / 2, '#FF80AB', 8);
+      }
+    }
 
     // Monster collision -> combat
     monsters.forEach(m => {
@@ -2122,7 +2368,8 @@ function drawCombat() {
     const hy = plY - 55;
     drawHeart(hx, hy, 7, i < playerCombatHP ? '#FF1744' : '#333');
   }
-  drawText(RANKS[getRank(totalKeys)].name, plX, plY - 70, RANKS[getRank(totalKeys)].color, 14, 'center');
+  drawText('Henry', plX, plY - 70, '#FFD700', 14, 'center');
+  drawText(RANKS[getRank(totalKeys)].name, plX, plY + 52, RANKS[getRank(totalKeys)].color, 11, 'center');
 
   // Message box
   ctx.fillStyle = 'rgba(0,0,0,0.8)';
@@ -2461,7 +2708,7 @@ function drawGameOver() {
   drawTextBold('YOU DIED', W / 2, 200, '#F44336', 52, 'center');
   ctx.shadowBlur = 0;
 
-  drawText('The monsters proved too strong...', W / 2, 260, '#888', 18, 'center');
+  drawText('The monsters were too strong for Henry...', W / 2, 260, '#888', 18, 'center');
 
   drawText(`Keys Collected: ${totalKeys}`, W / 2, 330, '#FFD700', 20, 'center');
   drawText(`Rank Achieved: ${RANKS[getRank(totalKeys)].name}`, W / 2, 360, RANKS[getRank(totalKeys)].color, 20, 'center');
@@ -2506,14 +2753,18 @@ function drawWin() {
 
   ctx.shadowColor = '#00E5FF';
   ctx.shadowBlur = 30;
-  drawTextBold('YOU ARE A GOD', W / 2, 140, '#00E5FF', 48, 'center');
+  drawTextBold('HENRY IS A GOD', W / 2, 120, '#00E5FF', 48, 'center');
   ctx.shadowBlur = 0;
 
-  drawAvatar(W / 2, 280, 100, 5);
+  // Henry in full God form
+  drawAvatar(W / 2 - 55, 260, 90, 5);
+  // Mom cheering
+  drawMom(W / 2 + 55, 265, 70);
 
-  drawTextBold('Congratulations!', W / 2, 370, '#FFD700', 28, 'center');
-  drawText(`All ${totalKeys} keys collected across all levels`, W / 2, 410, '#aaa', 16, 'center');
-  drawText('You have conquered the Haunted Mansions!', W / 2, 440, '#CE93D8', 16, 'center');
+  drawTextBold('Congratulations, Henry!', W / 2, 350, '#FFD700', 28, 'center');
+  drawText(`All ${totalKeys} keys collected across all levels`, W / 2, 390, '#aaa', 16, 'center');
+  drawText('Henry conquered the Haunted Mansions!', W / 2, 420, '#CE93D8', 16, 'center');
+  drawText('Mom is so proud!', W / 2, 448, '#FF80AB', 14, 'center');
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
