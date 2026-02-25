@@ -319,8 +319,8 @@ function generateOverworld() {
     overworldEntities.push({ type: 'tree', x: c, y: r });
     overworldMap[r][c] = 'tree';
   }
-  // Hearts to collect (need to fill up 3 hearts)
-  let heartsToPlace = 5 + level * 2;
+  // Hearts to collect — exactly maxHearts so player must find them all
+  let heartsToPlace = maxHearts;
   for (let i = 0; i < heartsToPlace; i++) {
     let c, r;
     do { c = rand(1, COLS - 2); r = rand(1, ROWS - 2); } while (
@@ -463,8 +463,8 @@ function generateMansion() {
       moveTimer: 0,
     });
   }
-  // Heart pickups inside mansion (heal between fights)
-  let mansionHearts = 3 + level;
+  // Heart pickups inside mansion (scarce healing — find these to survive)
+  let mansionHearts = 2;
   for (let i = 0; i < mansionHearts; i++) {
     let c, r;
     do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
@@ -2153,7 +2153,7 @@ function updateCombat(dt) {
     if (combatAnimTimer > 1.2) {
       currentMonster.alive = false;
       if (!currentMonster.respawned) monstersDefeated++;
-      playerCombatHP = Math.min(playerCombatHP + 1, maxHearts);
+      // No free heal — you keep whatever HP you survived with
       currentHearts = playerCombatHP;
       startTransition(() => {
         gameState = STATE.MANSION;
@@ -2166,8 +2166,28 @@ function updateCombat(dt) {
   } else if (combatTurn === 'player_dying') {
     combatAnimTimer += dt;
     if (combatAnimTimer > 1.2) {
-      currentHearts = 0;
-      gameState = STATE.GAME_OVER;
+      // Jeopardy: lose 2 keys (or all remaining if fewer), respawn at mansion entrance
+      const keysToLose = Math.min(2, keysThisLevel);
+      keysThisLevel -= keysToLose;
+      totalKeys -= keysToLose;
+      // Un-collect some key pickups so they reappear on the map
+      let restored = 0;
+      for (let i = keys.length - 1; i >= 0 && restored < keysToLose; i--) {
+        if (keys[i].collected) {
+          keys[i].collected = false;
+          restored++;
+        }
+      }
+      // Monster survives with full HP (it beat you)
+      currentMonster.hp = currentMonster.maxHp;
+      // Respawn at mansion entrance with 1 heart
+      currentHearts = 1;
+      player.x = 1;
+      player.y = ROWS - 2;
+      combatMessage = '';
+      startTransition(() => {
+        gameState = STATE.MANSION;
+      });
     }
   }
 }
