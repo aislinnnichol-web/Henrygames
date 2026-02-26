@@ -3,6 +3,130 @@
 // A Pokémon-style adventure + Haunted Mansion dungeon crawler
 // ============================================================
 
+// ── Sound Engine (Web Audio API) ────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let soundEnabled = true;
+
+function initAudio() {
+  if (audioCtx) return;
+  try { audioCtx = new AudioCtx(); } catch (e) { soundEnabled = false; }
+}
+
+function playTone(freq, duration, type, vol, ramp) {
+  if (!soundEnabled || !audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'square';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  if (ramp) osc.frequency.linearRampToValueAtTime(ramp, audioCtx.currentTime + duration);
+  gain.gain.setValueAtTime(vol || 0.1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playNoise(duration, vol) {
+  if (!soundEnabled || !audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const bufSize = audioCtx.sampleRate * duration;
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  src.buffer = buf;
+  gain.gain.setValueAtTime(vol || 0.05, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  src.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start();
+}
+
+const SFX = {
+  heartPickup() {
+    playTone(523, 0.1, 'sine', 0.12);
+    setTimeout(() => playTone(659, 0.1, 'sine', 0.12), 80);
+    setTimeout(() => playTone(784, 0.15, 'sine', 0.1), 160);
+  },
+  keyPickup() {
+    playTone(880, 0.08, 'square', 0.08);
+    setTimeout(() => playTone(1047, 0.08, 'square', 0.08), 60);
+    setTimeout(() => playTone(1319, 0.12, 'square', 0.07), 120);
+  },
+  playerAttack(effectiveness) {
+    if (effectiveness >= 2) {
+      playTone(200, 0.08, 'sawtooth', 0.1);
+      setTimeout(() => playTone(400, 0.1, 'sawtooth', 0.12), 50);
+      setTimeout(() => playTone(800, 0.15, 'sawtooth', 0.1), 100);
+    } else if (effectiveness <= 0.5) {
+      playTone(200, 0.15, 'triangle', 0.06);
+      playNoise(0.1, 0.03);
+    } else {
+      playTone(300, 0.08, 'sawtooth', 0.08);
+      setTimeout(() => playTone(500, 0.1, 'sawtooth', 0.08), 60);
+    }
+  },
+  playerDefend() {
+    playTone(250, 0.15, 'triangle', 0.08);
+    playNoise(0.08, 0.04);
+  },
+  monsterAttack(heavy) {
+    if (heavy) {
+      playTone(120, 0.25, 'sawtooth', 0.12, 60);
+      playNoise(0.15, 0.08);
+    } else {
+      playTone(180, 0.12, 'sawtooth', 0.08, 100);
+    }
+  },
+  playerHit() {
+    playTone(150, 0.2, 'square', 0.1, 80);
+    playNoise(0.1, 0.06);
+  },
+  monsterDie() {
+    playTone(400, 0.1, 'sawtooth', 0.1, 100);
+    setTimeout(() => playTone(300, 0.15, 'sawtooth', 0.08, 80), 100);
+    setTimeout(() => playNoise(0.2, 0.06), 150);
+  },
+  playerDie() {
+    playTone(300, 0.2, 'square', 0.1, 100);
+    setTimeout(() => playTone(200, 0.3, 'square', 0.1, 80), 200);
+    setTimeout(() => playTone(100, 0.5, 'square', 0.08, 50), 450);
+  },
+  levelUp() {
+    [523, 587, 659, 784, 880, 1047].forEach((f, i) => {
+      setTimeout(() => playTone(f, 0.15, 'sine', 0.1), i * 100);
+    });
+  },
+  portalEnter() {
+    playTone(330, 0.2, 'sine', 0.08, 660);
+    setTimeout(() => playTone(440, 0.3, 'sine', 0.08, 880), 150);
+  },
+  momTalk() {
+    playTone(520, 0.08, 'sine', 0.06);
+    setTimeout(() => playTone(580, 0.08, 'sine', 0.06), 80);
+    setTimeout(() => playTone(520, 0.1, 'sine', 0.05), 160);
+  },
+  step() {
+    playNoise(0.04, 0.02);
+  },
+  spikeHit() {
+    playTone(100, 0.15, 'sawtooth', 0.08);
+    playNoise(0.08, 0.05);
+  },
+  menuSelect() {
+    playTone(660, 0.06, 'square', 0.06);
+  },
+  combatStart() {
+    playTone(220, 0.15, 'sawtooth', 0.1, 440);
+    setTimeout(() => playTone(330, 0.15, 'sawtooth', 0.1, 660), 150);
+    setTimeout(() => playTone(440, 0.2, 'sawtooth', 0.08), 300);
+  },
+};
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
