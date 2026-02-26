@@ -1315,16 +1315,22 @@ function drawTitle() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Floating particles
+  // Floating particles with glow
   const t = Date.now() / 1000;
+  ctx.save();
   for (let i = 0; i < 30; i++) {
     const px = (i * 73 + t * 20) % W;
     const py = (i * 47 + Math.sin(t + i) * 30) % H;
-    ctx.fillStyle = `rgba(${100 + i * 5}, ${50 + i * 3}, ${200}, ${0.3 + 0.2 * Math.sin(t + i)})`;
+    const alpha = 0.3 + 0.2 * Math.sin(t + i);
+    const r = 2 + Math.sin(t * 2 + i) * 1.5;
+    ctx.shadowColor = `rgba(${100 + i * 5}, ${50 + i * 3}, 200, 1)`;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = `rgba(${100 + i * 5}, ${50 + i * 3}, 200, ${alpha})`;
     ctx.beginPath();
-    ctx.arc(px, py, 2 + Math.sin(t * 2 + i) * 1.5, 0, Math.PI * 2);
+    ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
 
   // Title
   ctx.shadowColor = '#9C27B0';
@@ -1356,6 +1362,8 @@ function drawTitle() {
 
 function updateTitle() {
   if (justPressed.enter || justPressed.space) {
+    initAudio();
+    SFX.menuSelect();
     level = 0;
     totalKeys = 0;
     startTransition(() => initLevel());
@@ -1678,6 +1686,10 @@ function drawOverworld() {
 }
 
 function drawHeart(cx, cy, size, color) {
+  // Outer glow
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = size * 1.2;
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(cx, cy + size * 0.3);
@@ -1686,6 +1698,15 @@ function drawHeart(cx, cy, size, color) {
   ctx.bezierCurveTo(cx, cy + size, cx + size, cy + size * 0.6, cx + size, cy + size * 0.1);
   ctx.bezierCurveTo(cx + size, cy - size * 0.3, cx, cy - size * 0.3, cx, cy + size * 0.3);
   ctx.fill();
+  // Inner highlight
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(cx - size * 0.3, cy, size * 0.25, size * 0.2, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function updateOverworld(dt) {
@@ -1723,6 +1744,7 @@ function updateOverworld(dt) {
     player.x = nx;
     player.y = ny;
     player.moveCD = 0.12;
+    SFX.step();
 
     // Pick up hearts
     heartPickups.forEach(h => {
@@ -1731,12 +1753,14 @@ function updateOverworld(dt) {
         heartsCollected++;
         currentHearts = Math.min(currentHearts + 1, maxHearts);
         spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
+        SFX.heartPickup();
       }
     });
 
     // Portal check
     if (portalPos && player.x === portalPos.x && player.y === portalPos.y) {
       if (currentHearts >= maxHearts) {
+        SFX.portalEnter();
         startTransition(() => {
           player.x = 1;
           player.y = ROWS - 2;
@@ -1797,9 +1821,21 @@ function drawMansionEnter() {
   ctx.arc(420, 355, 4, 0, Math.PI * 2);
   ctx.fill();
 
-  // Ground
+  // Ground with fog
   ctx.fillStyle = '#1a1a0a';
   ctx.fillRect(0, 400, W, 200);
+  // Ground fog
+  ctx.save();
+  for (let i = 0; i < 8; i++) {
+    const fogX = (i * 120 + Math.sin(t * 0.3 + i) * 40) % (W + 100) - 50;
+    const fogAlpha = 0.04 + 0.02 * Math.sin(t * 0.5 + i);
+    const fogGrad = ctx.createRadialGradient(fogX, 400, 0, fogX, 400, 80);
+    fogGrad.addColorStop(0, `rgba(150,120,200,${fogAlpha})`);
+    fogGrad.addColorStop(1, 'rgba(150,120,200,0)');
+    ctx.fillStyle = fogGrad;
+    ctx.fillRect(fogX - 80, 360, 160, 80);
+  }
+  ctx.restore();
 
   // Text
   const theme = getTheme();
@@ -1994,22 +2030,34 @@ function drawMansion() {
           break;
         }
         case 'door': {
+          const doorReady = keysThisLevel >= keysNeeded && monstersDefeated >= monstersRequired;
           ctx.fillStyle = '#1a1520';
           ctx.fillRect(tx, ty, TILE, TILE);
+          // Glow when ready to exit
+          if (doorReady) {
+            ctx.save();
+            const doorPulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+            const doorGlow = ctx.createRadialGradient(tx + TILE / 2, ty + TILE / 2, 5, tx + TILE / 2, ty + TILE / 2, TILE);
+            doorGlow.addColorStop(0, `rgba(255,215,0,${0.15 * doorPulse})`);
+            doorGlow.addColorStop(1, 'rgba(255,215,0,0)');
+            ctx.fillStyle = doorGlow;
+            ctx.fillRect(tx - TILE / 2, ty - TILE / 2, TILE * 2, TILE * 2);
+            ctx.restore();
+          }
           // 3D door with frame
           ctx.fillStyle = '#3E2723';
           ctx.fillRect(tx + 6, ty + 1, TILE - 12, TILE - 2);
           // Door face lighter
-          ctx.fillStyle = '#5D4037';
+          ctx.fillStyle = doorReady ? '#6D5047' : '#5D4037';
           ctx.fillRect(tx + 8, ty + 3, TILE - 16, TILE - 6);
           // Door panels (3D inset)
-          ctx.fillStyle = '#4E342E';
+          ctx.fillStyle = doorReady ? '#5E4438' : '#4E342E';
           ctx.fillRect(tx + 10, ty + 5, TILE - 20, (TILE - 12) / 2 - 1);
           ctx.fillRect(tx + 10, ty + TILE / 2 + 1, TILE - 20, (TILE - 12) / 2 - 1);
           // Knob with shine
           ctx.fillStyle = '#FFD700';
           ctx.shadowColor = '#FFD700';
-          ctx.shadowBlur = 4;
+          ctx.shadowBlur = doorReady ? 10 : 4;
           ctx.beginPath();
           ctx.arc(tx + TILE / 2 + 6, ty + TILE / 2, 3, 0, Math.PI * 2);
           ctx.fill();
@@ -2133,20 +2181,20 @@ function drawMansion() {
     drawText('Mom', momX, momY - TILE / 2 - 2, '#FF80AB', 10, 'center');
   }
 
-  // Mom message bubble
+  // Mom message bubble (positioned at bottom to avoid overlapping HUD/hearts)
   if (momMessage && momMessageTimer > 0) {
-    const bubbleW = Math.min(W - 40, ctx.measureText ? 320 : 320);
+    const bubbleW = Math.min(W - 40, 360);
     const bubbleH = 50;
     const bubbleX = (W - bubbleW) / 2;
-    const bubbleY = 20;
-    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    const bubbleY = H - bubbleH - 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
     ctx.strokeStyle = '#FF80AB';
     ctx.lineWidth = 2;
-    roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 8);
+    roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 10);
     ctx.fill();
     ctx.stroke();
-    drawText('Mom:', bubbleX + 10, bubbleY + 18, '#FF80AB', 12);
-    drawText(momMessage, bubbleX + 10, bubbleY + 36, '#fff', 12);
+    drawText('Mom:', bubbleX + 12, bubbleY + 18, '#FF80AB', 12);
+    drawText(momMessage, bubbleX + 12, bubbleY + 36, '#fff', 12);
   }
 
   // Monsters with ground shadow and HP indicator
@@ -2192,8 +2240,17 @@ function drawMansion() {
   const facing = input.left ? 'left' : input.right ? 'right' : 'down';
   drawAvatar(player.x * TILE + TILE / 2, player.y * TILE + TILE / 2, TILE - 4, getRank(totalKeys), facing);
 
-  // Keys collected display
-  drawText(`Keys: ${keysThisLevel}/10`, W / 2, TILE * 0.7, '#FFD700', 14, 'center');
+  // Torchlight vignette around player
+  const plCX = player.x * TILE + TILE / 2;
+  const plCY = player.y * TILE + TILE / 2;
+  const vigRadius = 180 + Math.sin(Date.now() / 500) * 15;
+  const vig = ctx.createRadialGradient(plCX, plCY, vigRadius * 0.3, plCX, plCY, vigRadius);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(0.6, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+
 }
 
 function updateMansion(dt) {
@@ -2230,6 +2287,7 @@ function updateMansion(dt) {
     player.x = nx;
     player.y = ny;
     player.moveCD = 0.12;
+    SFX.step();
 
     // Spike damage — higher chance on trapped/chaos levels
     const spikeMod = getTheme().modifier;
@@ -2238,7 +2296,9 @@ function updateMansion(dt) {
       currentHearts = Math.max(0, currentHearts - 1);
       spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#AAA', 6);
       screenShake(2, 0.1);
+      SFX.spikeHit();
       if (currentHearts <= 0) {
+        SFX.playerDie();
         gameState = STATE.GAME_OVER;
         return;
       }
@@ -2251,6 +2311,7 @@ function updateMansion(dt) {
         keysThisLevel++;
         totalKeys++;
         spawnParticle(k.x * TILE + TILE / 2, k.y * TILE + TILE / 2, '#FFD700', 12);
+        SFX.keyPickup();
       }
     });
 
@@ -2260,6 +2321,7 @@ function updateMansion(dt) {
         h.collected = true;
         currentHearts = Math.min(currentHearts + 1, maxHearts);
         spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
+        SFX.heartPickup();
       }
     });
 
@@ -2267,6 +2329,7 @@ function updateMansion(dt) {
     if (momNPC && player.x === momNPC.x && player.y === momNPC.y) {
       momMessage = MOM_TIPS[Math.floor(Math.random() * MOM_TIPS.length)];
       momMessageTimer = 4;
+      SFX.momTalk();
       // Heal 1 heart as Mom's care
       if (currentHearts < maxHearts) {
         currentHearts = Math.min(currentHearts + 1, maxHearts);
@@ -2277,6 +2340,7 @@ function updateMansion(dt) {
     // Monster collision -> combat
     monsters.forEach(m => {
       if (m.alive && m.x === player.x && m.y === player.y) {
+        SFX.combatStart();
         startCombat(m);
       }
     });
@@ -2322,6 +2386,7 @@ function updateMansion(dt) {
       }
       // Check if monster walked into player
       if (m.x === player.x && m.y === player.y) {
+        SFX.combatStart();
         startCombat(m);
       }
     }
@@ -2384,31 +2449,57 @@ function getEffectiveness(moveElement, monElement) {
 }
 
 function drawCombat() {
-  // Dark background with red tint
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#1a0000');
-  grad.addColorStop(1, '#0a0a0a');
-  ctx.fillStyle = grad;
+  // Dark background with subtle color shift
+  const bgGrad = ctx.createRadialGradient(W / 2, H * 0.35, 50, W / 2, H * 0.5, 500);
+  bgGrad.addColorStop(0, '#1a0a1e');
+  bgGrad.addColorStop(0.5, '#0f0510');
+  bgGrad.addColorStop(1, '#050208');
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
+
+  // Ambient light rays
+  const t = Date.now() / 1000;
+  ctx.save();
+  ctx.globalAlpha = 0.03;
+  for (let i = 0; i < 3; i++) {
+    const angle = t * 0.1 + i * 2.1;
+    const rayGrad = ctx.createLinearGradient(
+      W / 2 + Math.cos(angle) * 200, 0,
+      W / 2 + Math.cos(angle + 0.5) * 300, H
+    );
+    rayGrad.addColorStop(0, 'rgba(120,80,200,0)');
+    rayGrad.addColorStop(0.5, '#8050c0');
+    rayGrad.addColorStop(1, 'rgba(120,80,200,0)');
+    ctx.fillStyle = rayGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.restore();
 
   // 3D Battle arena with perspective floor
   // Shadow under platform
+  ctx.save();
+  ctx.shadowColor = 'rgba(100,50,180,0.3)';
+  ctx.shadowBlur = 40;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.beginPath();
   ctx.ellipse(W / 2, H * 0.55, 360, 55, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
   // Platform side (3D depth)
-  ctx.fillStyle = '#0f0a15';
+  ctx.fillStyle = '#0f0a18';
   ctx.beginPath();
   ctx.ellipse(W / 2, H * 0.53, 350, 50, 0, 0, Math.PI);
   ctx.fill();
-  // Platform top
-  ctx.fillStyle = '#1a1520';
+  // Platform top with subtle gradient
+  const platGrad = ctx.createRadialGradient(W / 2, H * 0.5, 0, W / 2, H * 0.5, 350);
+  platGrad.addColorStop(0, '#201828');
+  platGrad.addColorStop(1, '#120e18');
+  ctx.fillStyle = platGrad;
   ctx.beginPath();
   ctx.ellipse(W / 2, H * 0.5, 350, 50, 0, 0, Math.PI * 2);
   ctx.fill();
   // Grid lines for 3D perspective floor
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = 'rgba(140,100,200,0.05)';
   ctx.lineWidth = 1;
   for (let i = -5; i <= 5; i++) {
     ctx.beginPath();
@@ -2426,14 +2517,53 @@ function drawCombat() {
   drawMonster(monX, monY, 80, level);
   ctx.globalAlpha = 1;
 
-  // Monster HP bar
-  ctx.fillStyle = '#333';
-  ctx.fillRect(monX - 50, monY - 60, 100, 10);
-  ctx.fillStyle = '#F44336';
-  ctx.fillRect(monX - 50, monY - 60, 100 * (monsterHP / monsterMaxHP), 10);
-  ctx.strokeStyle = '#666';
+  // Monster HP bar (modern gradient with glow)
+  const hpBarX = monX - 50, hpBarY = monY - 62, hpBarW = 100, hpBarH = 12;
+  const hpRatio = monsterHP / monsterMaxHP;
+  // Background
+  ctx.fillStyle = 'rgba(20,20,20,0.8)';
+  roundRect(hpBarX, hpBarY, hpBarW, hpBarH, 6);
+  ctx.fill();
+  // HP fill gradient (green -> yellow -> red based on HP)
+  if (hpRatio > 0) {
+    const hpGrad = ctx.createLinearGradient(hpBarX, 0, hpBarX + hpBarW * hpRatio, 0);
+    if (hpRatio > 0.5) {
+      hpGrad.addColorStop(0, '#4CAF50');
+      hpGrad.addColorStop(1, '#66BB6A');
+    } else if (hpRatio > 0.25) {
+      hpGrad.addColorStop(0, '#FF9800');
+      hpGrad.addColorStop(1, '#FFB74D');
+    } else {
+      hpGrad.addColorStop(0, '#D32F2F');
+      hpGrad.addColorStop(1, '#F44336');
+    }
+    ctx.save();
+    ctx.beginPath();
+    roundRect(hpBarX, hpBarY, hpBarW, hpBarH, 6);
+    ctx.clip();
+    ctx.fillStyle = hpGrad;
+    ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
+    // Shimmer highlight
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH / 3);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // Glow
+    ctx.save();
+    ctx.shadowColor = hpRatio > 0.5 ? '#4CAF50' : hpRatio > 0.25 ? '#FF9800' : '#F44336';
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = ctx.shadowColor;
+    ctx.lineWidth = 1;
+    roundRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH, 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Border
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(monX - 50, monY - 60, 100, 10);
+  roundRect(hpBarX, hpBarY, hpBarW, hpBarH, 6);
+  ctx.stroke();
   // Monster name + element
   const elColor = ELEMENT_COLORS[monsterElement] || '#888';
   const elIcon = ELEMENT_ICONS[monsterElement] || '';
@@ -2454,14 +2584,18 @@ function drawCombat() {
       stanceText = 'Attacking';
       stanceColor = '#FF8A65';
     }
-    // Stance badge
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    roundRect(monX - 50, monY + 30, 100, 20, 4);
+    // Stance badge with glow
+    ctx.save();
+    ctx.shadowColor = stanceColor;
+    ctx.shadowBlur = monsterStance === 'heavy' ? 12 : 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    roundRect(monX - 50, monY + 30, 100, 20, 6);
     ctx.fill();
     ctx.strokeStyle = stanceColor;
     ctx.lineWidth = 1;
-    roundRect(monX - 50, monY + 30, 100, 20, 4);
+    roundRect(monX - 50, monY + 30, 100, 20, 6);
     ctx.stroke();
+    ctx.restore();
     drawText(stanceText, monX, monY + 44, stanceColor, 11, 'center');
   }
 
@@ -2471,17 +2605,26 @@ function drawCombat() {
   if (flashColor && combatTurn === 'player_hit') {
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(combatAnimTimer * 20);
   }
-  // Defense aura when defending
+  // Defense aura when defending (pulsing shield)
   if (playerDefending) {
-    ctx.fillStyle = 'rgba(79, 195, 247, 0.15)';
+    ctx.save();
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() / 150);
+    const shieldGrad = ctx.createRadialGradient(plX, plY, 20, plX, plY, 55);
+    shieldGrad.addColorStop(0, 'rgba(79, 195, 247, 0)');
+    shieldGrad.addColorStop(0.7, `rgba(79, 195, 247, ${0.08 * pulse})`);
+    shieldGrad.addColorStop(1, `rgba(79, 195, 247, ${0.2 * pulse})`);
+    ctx.fillStyle = shieldGrad;
     ctx.beginPath();
-    ctx.arc(plX, plY, 50, 0, Math.PI * 2);
+    ctx.arc(plX, plY, 55, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)';
+    ctx.shadowColor = '#4FC3F7';
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = `rgba(79, 195, 247, ${0.5 * pulse})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(plX, plY, 48, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
   }
   drawAvatar(plX, plY, 70, getRank(totalKeys));
   ctx.globalAlpha = 1;
@@ -2495,13 +2638,23 @@ function drawCombat() {
   drawText('Henry', plX, plY - 70, '#FFD700', 14, 'center');
   drawText(RANKS[getRank(totalKeys)].name, plX, plY + 52, RANKS[getRank(totalKeys)].color, 11, 'center');
 
-  // Message box
-  ctx.fillStyle = 'rgba(0,0,0,0.8)';
-  ctx.strokeStyle = '#555';
-  ctx.lineWidth = 2;
-  roundRect(30, H - 200, W - 60, 70, 10);
+  // Message box (glass-morphism)
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,10,30,0.85)';
+  roundRect(30, H - 200, W - 60, 70, 12);
   ctx.fill();
+  // Top highlight
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  roundRect(30, H - 200, W - 60, 20, 12);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  roundRect(30, H - 200, W - 60, 70, 12);
   ctx.stroke();
+  ctx.restore();
   drawText(combatMessage, W / 2, H - 162, '#fff', 14, 'center');
 
   // Move selection (only during player turn)
@@ -2523,13 +2676,29 @@ function drawCombat() {
       const onCooldown = moveCooldowns[move] && moveCooldowns[move] > 0;
       const eff = move !== 'Defend' ? getEffectiveness(md.element, monsterElement) : 0;
 
-      // Box background
-      ctx.fillStyle = onCooldown ? 'rgba(60,60,60,0.5)' : isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
-      ctx.strokeStyle = onCooldown ? '#333' : isSelected ? md.color : '#444';
-      ctx.lineWidth = isSelected ? 2 : 1;
-      roundRect(bx, by, boxW, boxH, 6);
+      // Box background (glass-morphism)
+      ctx.save();
+      if (isSelected && !onCooldown) {
+        ctx.shadowColor = md.color;
+        ctx.shadowBlur = 10;
+      }
+      ctx.fillStyle = onCooldown ? 'rgba(30,30,30,0.6)' : isSelected ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,25,0.7)';
+      roundRect(bx, by, boxW, boxH, 8);
       ctx.fill();
+      // Top highlight on selected
+      if (isSelected && !onCooldown) {
+        ctx.globalAlpha = 0.1;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        roundRect(bx, by, boxW, boxH * 0.4, 8);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = onCooldown ? '#333' : isSelected ? md.color : 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = isSelected ? 2 : 1;
+      roundRect(bx, by, boxW, boxH, 8);
       ctx.stroke();
+      ctx.restore();
 
       // Move name
       const nameColor = onCooldown ? '#555' : md.color;
@@ -2582,8 +2751,8 @@ function updateCombat(dt) {
     for (let i = 0; i < Math.min(maxMoves, 4); i++) {
       if (justPressed.moves[i]) selectedMove = i;
     }
-    if (input.left && selectedMove > 0) { selectedMove--; input.left = false; }
-    if (input.right && selectedMove < maxMoves - 1) { selectedMove++; input.right = false; }
+    if (input.left && selectedMove > 0) { selectedMove--; input.left = false; SFX.menuSelect(); }
+    if (input.right && selectedMove < maxMoves - 1) { selectedMove++; input.right = false; SFX.menuSelect(); }
 
     // Execute action
     if (justPressed.space || justPressed.enter) {
@@ -2604,6 +2773,7 @@ function updateCombat(dt) {
         playerDefending = true;
         combatMessage = 'You brace for impact! (Damage halved)';
         spawnParticle(W * 0.25, H * 0.45, '#4FC3F7', 8);
+        SFX.playerDefend();
         lastElement = '';
         comboCount = 0;
       } else {
@@ -2642,6 +2812,7 @@ function updateCombat(dt) {
 
         spawnParticle(W * 0.65, H * 0.35, moveData.color, effectiveness >= 2 ? 25 : 15);
         screenShake(effectiveness >= 2 ? 5 : 3, effectiveness >= 2 ? 0.3 : 0.2);
+        SFX.playerAttack(effectiveness);
 
         // Set cooldown
         if (moveData.cooldown > 0) {
@@ -2659,6 +2830,7 @@ function updateCombat(dt) {
         combatMessage = `${currentMonster.name} defeated!`;
         combatTurn = 'monster_dying';
         combatAnimTimer = 0;
+        SFX.monsterDie();
       } else {
         combatTurn = 'monster_hit';
         combatAnimTimer = 0;
@@ -2693,6 +2865,10 @@ function updateCombat(dt) {
         stanceMsg += ` -${finalDmg} heart${finalDmg > 1 ? 's' : ''}!`;
         spawnParticle(W * 0.25, H * 0.45, '#FF0000', 12);
         screenShake(baseDmg >= 2 ? 6 : 4, 0.25);
+        SFX.monsterAttack(baseDmg >= 2);
+        setTimeout(() => SFX.playerHit(), 100);
+      } else if (baseDmg > 0) {
+        SFX.playerDefend();
       }
       combatMessage = stanceMsg;
 
@@ -2704,6 +2880,7 @@ function updateCombat(dt) {
         playerCombatHP = 0;
         combatTurn = 'player_dying';
         combatAnimTimer = 0;
+        SFX.playerDie();
       } else {
         combatTurn = 'player_hit';
         combatAnimTimer = 0;
@@ -2769,6 +2946,7 @@ function levelUp() {
   const prevRank = getRank(totalKeys - keysThisLevel);
   const newRank = getRank(totalKeys);
   level++;
+  SFX.levelUp();
   if (level >= 6 || totalKeys >= 60) {
     gameState = STATE.WIN;
   } else {
@@ -2781,16 +2959,21 @@ function drawLevelUp() {
   ctx.fillStyle = '#0a0020';
   ctx.fillRect(0, 0, W, H);
 
-  // Fireworks particles
+  // Fireworks particles with bloom
   const t = Date.now() / 1000;
+  ctx.save();
   for (let i = 0; i < 20; i++) {
     const fx = (i * 97 + t * 50) % W;
     const fy = (i * 53 + Math.sin(t * 2 + i * 0.7) * 100 + 200) % H;
-    ctx.fillStyle = `hsl(${(i * 40 + t * 100) % 360}, 80%, 60%)`;
+    const hue = (i * 40 + t * 100) % 360;
+    ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = `hsl(${hue}, 80%, 65%)`;
     ctx.beginPath();
     ctx.arc(fx, fy, 3 + Math.sin(t * 3 + i) * 2, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
 
   const rank = getRank(totalKeys);
   ctx.shadowColor = RANKS[rank].color;
@@ -2824,11 +3007,30 @@ function updateLevelUp(dt) {
 
 // ── Game Over ────────────────────────────────────────────────
 function drawGameOver() {
-  ctx.fillStyle = '#0a0000';
+  // Dark vignette background
+  const vigGrad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, 450);
+  vigGrad.addColorStop(0, '#180000');
+  vigGrad.addColorStop(1, '#050000');
+  ctx.fillStyle = vigGrad;
   ctx.fillRect(0, 0, W, H);
 
+  // Falling embers
+  const t = Date.now() / 1000;
+  ctx.save();
+  for (let i = 0; i < 15; i++) {
+    const ex = (i * 67 + t * 15) % W;
+    const ey = (i * 43 + t * 30) % H;
+    ctx.shadowColor = '#F44336';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = `rgba(244,67,54,${0.2 + 0.15 * Math.sin(t + i)})`;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
   ctx.shadowColor = '#F44336';
-  ctx.shadowBlur = 15;
+  ctx.shadowBlur = 25;
   drawTextBold('YOU DIED', W / 2, 200, '#F44336', 52, 'center');
   ctx.shadowBlur = 0;
 
@@ -2920,14 +3122,28 @@ function updateParticles(dt) {
 }
 
 function drawParticles() {
+  ctx.save();
   particles.forEach(p => {
-    ctx.globalAlpha = p.life / p.maxLife;
+    const lifeRatio = p.life / p.maxLife;
+    const radius = p.size * lifeRatio;
+    ctx.globalAlpha = lifeRatio;
+    // Glow layer
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = radius * 4;
     ctx.fillStyle = p.color;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * (p.life / p.maxLife), 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    // Bright core
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = lifeRatio * 0.6;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 0.4, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 // ── HUD ──────────────────────────────────────────────────────

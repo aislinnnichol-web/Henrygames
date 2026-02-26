@@ -35,33 +35,39 @@
       max-width: 800px;
     }
     canvas {
-      border: 3px solid #444;
-      border-radius: 8px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
       image-rendering: pixelated;
       cursor: default;
       width: 100%;
       max-width: 800px;
       height: auto;
+      box-shadow: 0 0 20px rgba(80,40,160,0.2), 0 4px 16px rgba(0,0,0,0.5);
     }
     #hud {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      right: 8px;
+      position: relative;
+      width: 100%;
+      max-width: 800px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: stretch;
+      gap: 6px;
+      margin-top: 4px;
       pointer-events: none;
       z-index: 10;
     }
     .hud-panel {
-      background: rgba(0,0,0,0.7);
+      background: linear-gradient(135deg, rgba(20,20,35,0.92), rgba(10,10,25,0.88));
       color: white;
-      padding: 6px 10px;
-      border-radius: 8px;
+      padding: 6px 12px;
+      border-radius: 6px;
       font-size: 12px;
       line-height: 1.5;
-      border: 1px solid rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+      flex: 1;
     }
     #controls {
       color: #888;
@@ -190,7 +196,7 @@
         border-width: 2px;
         border-radius: 4px;
       }
-      .hud-panel { font-size: 10px; padding: 4px 8px; }
+      .hud-panel { font-size: 10px; padding: 4px 8px; border-radius: 4px; }
     }
     @media (hover: none) and (pointer: coarse) {
       #controls { display: none; }
