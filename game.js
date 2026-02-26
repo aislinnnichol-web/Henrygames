@@ -146,6 +146,29 @@ const RANKS = [
   { name: 'God',     color: '#00E5FF', threshold: 50, moves: ['Slap', 'Punch', 'Fireball', 'Thunder', 'Void Strike', 'Divine Wrath'] },
 ];
 
+// Per-level character forms — the hero transforms each level
+const HERO_FORMS = [
+  { name: 'Spark', species: 'Ember Fox', bodyColor: '#FF6B35', accentColor: '#FFD700', feature: 'tail',  desc: 'A quick little fire fox' },
+  { name: 'Gloom',  species: 'Shadow Cat', bodyColor: '#4A0E8F', accentColor: '#CE93D8', feature: 'ears',  desc: 'A stealthy shadow cat' },
+  { name: 'Surge',  species: 'Storm Wolf', bodyColor: '#1565C0', accentColor: '#FFEB3B', feature: 'mane',  desc: 'An electric wolf' },
+  { name: 'Thorn',  species: 'Iron Bear', bodyColor: '#5D4037', accentColor: '#B0BEC5', feature: 'armor', desc: 'An armored beast' },
+  { name: 'Wraith', species: 'Void Serpent', bodyColor: '#1A0033', accentColor: '#E040FB', feature: 'wings', desc: 'A winged void serpent' },
+  { name: 'Nova',   species: 'Celestial Dragon', bodyColor: '#00838F', accentColor: '#00E5FF', feature: 'halo',  desc: 'A divine dragon' },
+];
+
+// Per-level guide NPC forms — the mysterious guide transforms too
+const GUIDE_FORMS = [
+  { name: 'Old Toad', color: '#4CAF50', accent: '#8BC34A', shape: 'round' },
+  { name: 'Lantern Ghost', color: '#4FC3F7', accent: '#B3E5FC', shape: 'float' },
+  { name: 'Mushroom Sage', color: '#FF9800', accent: '#FFE0B2', shape: 'wide' },
+  { name: 'Crystal Golem', color: '#7E57C2', accent: '#D1C4E9', shape: 'angular' },
+  { name: 'Bone Oracle', color: '#BDBDBD', accent: '#F5F5F5', shape: 'tall' },
+  { name: 'Star Child', color: '#FFD700', accent: '#FFF9C4', shape: 'glow' },
+];
+
+function getHeroForm() { return HERO_FORMS[Math.min(level, HERO_FORMS.length - 1)]; }
+function getGuideForm() { return GUIDE_FORMS[Math.min(level, GUIDE_FORMS.length - 1)]; }
+
 const MOVE_DATA = {
   'Slap':         { dmg: 1, color: '#fff',    element: 'physical', cooldown: 0 },
   'Punch':        { dmg: 2, color: '#FFA726', element: 'physical', cooldown: 0 },
@@ -218,46 +241,100 @@ const LEVEL_THEMES = [
     overworldSky: ['#6BB3E0', '#87CEEB', '#7BC67E'],
     mansionHue: 0,
     fogRadius: 250,
+    biome: 'meadow',
+    groundColor: '#4a7a3a',
+    groundAccent: '#5a8a4a',
+    obstacle: 'tree',
+    obstacleColor: '#2d5a1e',
+    waterColor: '#4a90d9',
+    flowerColors: ['#FF6B6B', '#FFD93D', '#6BCB77'],
+    mansionFloor: '#1a1520',
+    mansionWall: '#2a2030',
   },
   {
     name: 'The Blinding Dark',
     modifier: 'darkness',
     desc: 'Reduced visibility. Stay close to torches!',
-    overworldSky: ['#3a5a7a', '#5577a0', '#4a7a4e'],
+    overworldSky: ['#0a0a2a', '#1a1a3a', '#0a1a2a'],
     mansionHue: 240,
     fogRadius: 120,
+    biome: 'swamp',
+    groundColor: '#2a3a2a',
+    groundAccent: '#3a4a30',
+    obstacle: 'deadTree',
+    obstacleColor: '#3a3030',
+    waterColor: '#2a4a30',
+    flowerColors: ['#7a9a5a', '#5a7a4a', '#8aaa6a'],
+    mansionFloor: '#0a0f1a',
+    mansionWall: '#151a28',
   },
   {
     name: 'The Swarming Halls',
     modifier: 'swarm',
     desc: 'Monsters are faster and more aggressive.',
-    overworldSky: ['#8B4513', '#CD853F', '#6B8E23'],
+    overworldSky: ['#FF6B35', '#FF8C42', '#FFD700'],
     mansionHue: 30,
     fogRadius: 220,
+    biome: 'desert',
+    groundColor: '#C4A35A',
+    groundAccent: '#D4B36A',
+    obstacle: 'cactus',
+    obstacleColor: '#4a7a3a',
+    waterColor: '#3a8aaa',
+    flowerColors: ['#FF5722', '#FF9800', '#FFD700'],
+    mansionFloor: '#1a1510',
+    mansionWall: '#2a2520',
   },
   {
     name: 'The Spiked Gauntlet',
     modifier: 'trapped',
     desc: 'Spikes everywhere! Watch your step.',
-    overworldSky: ['#555', '#777', '#4a5a3a'],
+    overworldSky: ['#4a4a5a', '#6a6a7a', '#5a5a4a'],
     mansionHue: 120,
     fogRadius: 200,
+    biome: 'mountain',
+    groundColor: '#6a6a6a',
+    groundAccent: '#7a7a7a',
+    obstacle: 'rock',
+    obstacleColor: '#5a5a5a',
+    waterColor: '#4a6a8a',
+    flowerColors: ['#8a8aaa', '#7a7a9a', '#9a9aba'],
+    mansionFloor: '#151518',
+    mansionWall: '#252528',
   },
   {
     name: 'The Phantom Keep',
     modifier: 'phasing',
     desc: 'Monsters phase through walls to hunt you.',
-    overworldSky: ['#2a0a3a', '#4a2a5a', '#3a5a3e'],
+    overworldSky: ['#1a0030', '#3a1060', '#2a0a4a'],
     mansionHue: 280,
     fogRadius: 180,
+    biome: 'void',
+    groundColor: '#1a0a2a',
+    groundAccent: '#2a1a3a',
+    obstacle: 'crystal',
+    obstacleColor: '#8a5ac0',
+    waterColor: '#3a1a5a',
+    flowerColors: ['#E040FB', '#CE93D8', '#AB47BC'],
+    mansionFloor: '#0a0515',
+    mansionWall: '#1a0a28',
   },
   {
     name: 'The Final Stand',
     modifier: 'chaos',
-    desc: 'All hazards combined. Good luck.',
-    overworldSky: ['#1a0000', '#3a0000', '#2a1a00'],
+    desc: 'All hazards combined. The ultimate test.',
+    overworldSky: ['#1a0000', '#3a0505', '#2a1000'],
     mansionHue: 0,
-    fogRadius: 140,
+    fogRadius: 160,
+    biome: 'inferno',
+    groundColor: '#3a1a0a',
+    groundAccent: '#4a2a1a',
+    obstacle: 'lava_rock',
+    obstacleColor: '#2a1a1a',
+    waterColor: '#FF4500',
+    flowerColors: ['#FF6B35', '#FF0000', '#FF8C00'],
+    mansionFloor: '#1a0a0a',
+    mansionWall: '#2a0a0a',
   },
 ];
 
@@ -314,20 +391,22 @@ const MOM_TIPS = [
   "Use elemental weaknesses for double damage!",
   "Don't spam the same move — mix it up or damage drops!",
   "Powerful moves have cooldowns. Use Slap or Punch in between!",
-  "Mansion hearts are scarce. Pick your fights carefully!",
+  "Smash crates to find hidden hearts!",
   "Shadow monsters are weak to Void Strike!",
   "Poison types hate Thunder — zap them!",
   "Ice monsters melt to Fireball!",
   "If a monster is guarding, save your strong move for next turn.",
-  "You've got this, Henry! I believe in you!",
-  "Losing a fight costs 2 keys — be careful!",
+  "You can do this! I sense greatness in you!",
+  "Losing a fight costs 2 keys — choose battles wisely!",
   "Defend when you see CHARGING HEAVY! Trust me!",
+  "Press SHIFT to dash through danger! It costs a heart though.",
+  "The door glows gold when you've cleared enough to exit.",
 ];
 
 // ── Input ────────────────────────────────────────────────────
-const input = { up: false, down: false, left: false, right: false, space: false, enter: false, moves: [false,false,false,false] };
-const justPressed = { space: false, enter: false, moves: [false,false,false,false] };
-const prevInput = { space: false, enter: false, moves: [false,false,false,false] };
+const input = { up: false, down: false, left: false, right: false, space: false, enter: false, shift: false, moves: [false,false,false,false] };
+const justPressed = { space: false, enter: false, shift: false, moves: [false,false,false,false] };
+const prevInput = { space: false, enter: false, shift: false, moves: [false,false,false,false] };
 
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -337,6 +416,7 @@ document.addEventListener('keydown', e => {
   if (k === 'd' || k === 'arrowright') input.right = true;
   if (k === ' ') input.space = true;
   if (k === 'enter') input.enter = true;
+  if (k === 'shift') input.shift = true;
   if (k === '1') input.moves[0] = true;
   if (k === '2') input.moves[1] = true;
   if (k === '3') input.moves[2] = true;
@@ -351,6 +431,7 @@ document.addEventListener('keyup', e => {
   if (k === 'd' || k === 'arrowright') input.right = false;
   if (k === ' ') input.space = false;
   if (k === 'enter') input.enter = false;
+  if (k === 'shift') input.shift = false;
   if (k === '1') input.moves[0] = false;
   if (k === '2') input.moves[1] = false;
   if (k === '3') input.moves[2] = false;
@@ -360,11 +441,13 @@ document.addEventListener('keyup', e => {
 function updateJustPressed() {
   justPressed.space = input.space && !prevInput.space;
   justPressed.enter = input.enter && !prevInput.enter;
+  justPressed.shift = input.shift && !prevInput.shift;
   for (let i = 0; i < 4; i++) justPressed.moves[i] = input.moves[i] && !prevInput.moves[i];
 }
 function storeInput() {
   prevInput.space = input.space;
   prevInput.enter = input.enter;
+  prevInput.shift = input.shift;
   for (let i = 0; i < 4; i++) prevInput.moves[i] = input.moves[i];
 }
 
@@ -722,10 +805,11 @@ function generateMansion() {
     );
     keys.push({ x: c, y: r, collected: false });
   }
-  // Monsters (scales with level)
-  let monsterCount = 3 + level;
+  // Monsters (scales with level — balanced so last level is hard but possible)
+  let monsterCount = 3 + Math.floor(level * 0.8); // 3,3,4,5,6,7
   monstersRequired = monsterCount;
   maxMonstersAlive = monsterCount;
+  const monHp = 2 + Math.floor(level * 0.8); // 2,2,3,4,4,5
   for (let i = 0; i < monsterCount; i++) {
     let c, r;
     do { c = rand(3, COLS - 4); r = rand(3, ROWS - 4); } while (
@@ -733,14 +817,14 @@ function generateMansion() {
     );
     monsters.push({
       x: c, y: r, alive: true,
-      hp: 2 + level,
-      maxHp: 2 + level,
+      hp: monHp,
+      maxHp: monHp,
       name: getMonsterName(level),
       moveTimer: 0,
     });
   }
-  // Heart pickups inside mansion (scarce healing — find these to survive)
-  let mansionHearts = 2;
+  // Heart pickups inside mansion (scales with level for survivability)
+  let mansionHearts = 2 + Math.floor(level / 2); // 2,2,3,3,4,4
   for (let i = 0; i < mansionHearts; i++) {
     let c, r;
     do { c = rand(2, COLS - 3); r = rand(2, ROWS - 3); } while (
@@ -806,6 +890,8 @@ function createPlayer() {
 function initLevel() {
   keysThisLevel = 0;
   heartsCollected = 0;
+  // Scale max hearts with level so later levels are survivable
+  maxHearts = 5 + level;  // 5,6,7,8,9,10
   currentHearts = 0; // Start empty -- collect hearts to fill up!
   generateOverworld();
   generateMansion();
@@ -833,9 +919,10 @@ function drawTextBold(text, x, y, color, size, align) {
   ctx.fillText(text, x, y);
 }
 
-// ── Avatar Drawing (evolves per rank) ────────────────────────
+// ── Avatar Drawing (transforms each level into different creature) ──
 function drawAvatar(cx, cy, size, rankIdx, facing) {
   const rank = RANKS[rankIdx];
+  const form = getHeroForm();
   const s = size;
   const half = s / 2;
   const t = Date.now() / 1000;
@@ -843,13 +930,17 @@ function drawAvatar(cx, cy, size, rankIdx, facing) {
   ctx.save();
   ctx.translate(cx, cy);
 
-  // === Rank aura effects ===
+  // Breathing animation
+  const breathe = 1 + Math.sin(t * 2.5) * 0.03;
+  ctx.scale(breathe, breathe);
+
+  // === Rank aura ===
   if (rankIdx >= 3) {
-    ctx.shadowColor = rank.color;
+    ctx.shadowColor = form.accentColor;
     ctx.shadowBlur = 8 + rankIdx * 3 + Math.sin(t * 3) * 4;
-    ctx.strokeStyle = rank.color;
+    ctx.strokeStyle = form.accentColor;
     ctx.lineWidth = 1.5;
-    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(t * 2);
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 2);
     ctx.beginPath();
     ctx.arc(0, 0, half + 6, 0, Math.PI * 2);
     ctx.stroke();
@@ -857,160 +948,205 @@ function drawAvatar(cx, cy, size, rankIdx, facing) {
     ctx.shadowBlur = 0;
   }
 
-  // === Cape (Master+) ===
-  if (rankIdx >= 3) {
-    const capeColors = { 3: '#C62828', 4: '#6A1B9A', 5: '#00838F' };
-    ctx.fillStyle = capeColors[rankIdx] || '#C62828';
-    const capeWave = Math.sin(t * 3) * 2;
+  // === Ground shadow ===
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(2, half * 0.8, half * 0.5, half * 0.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // === Tail (fox, cat, wolf) ===
+  if (form.feature === 'tail' || form.feature === 'ears' || form.feature === 'mane') {
+    const tailWave = Math.sin(t * 3) * 4;
+    ctx.fillStyle = form.bodyColor;
     ctx.beginPath();
-    ctx.moveTo(-half * 0.4, -half * 0.05);
-    ctx.quadraticCurveTo(-half * 0.7, half * 0.4 + capeWave, -half * 0.5, half * 0.85);
-    ctx.lineTo(half * 0.5, half * 0.85);
-    ctx.quadraticCurveTo(half * 0.7, half * 0.4 - capeWave, half * 0.4, -half * 0.05);
-    ctx.closePath();
+    ctx.moveTo(half * 0.3, half * 0.2);
+    ctx.quadraticCurveTo(half * 0.8 + tailWave, -half * 0.1, half * 0.6 + tailWave, -half * 0.5);
+    ctx.quadraticCurveTo(half * 0.5, -half * 0.1, half * 0.2, half * 0.2);
     ctx.fill();
+    if (form.feature === 'tail') {
+      // Fox tail tip
+      ctx.fillStyle = form.accentColor;
+      ctx.beginPath();
+      ctx.arc(half * 0.6 + tailWave, -half * 0.5, half * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
-  // === Body (shirt) — color upgrades with rank ===
-  const shirtColors = ['#4CAF50', '#2196F3', '#FF9800', '#C62828', '#7B1FA2', '#00BCD4'];
-  ctx.fillStyle = shirtColors[rankIdx] || '#4CAF50';
-  roundRect(-half * 0.45, -half * 0.05, half * 0.9, half * 0.65, 3);
-  ctx.fill();
-
-  // === Armor overlay (Pro+) ===
-  if (rankIdx >= 2) {
-    const armorColors = { 2: 'rgba(150,150,150,0.5)', 3: 'rgba(192,192,192,0.6)', 4: 'rgba(180,130,255,0.5)', 5: 'rgba(0,229,255,0.5)' };
-    ctx.fillStyle = armorColors[rankIdx] || 'rgba(150,150,150,0.4)';
-    roundRect(-half * 0.4, -half * 0.02, half * 0.8, half * 0.45, 2);
-    ctx.fill();
-    // Shoulder guards
-    ctx.fillStyle = armorColors[rankIdx] || 'rgba(150,150,150,0.4)';
+  // === Wings (serpent) ===
+  if (form.feature === 'wings') {
+    ctx.fillStyle = form.accentColor;
+    ctx.globalAlpha = 0.4;
+    const wingFlap = Math.sin(t * 4) * 5;
+    // Left wing
     ctx.beginPath();
-    ctx.arc(-half * 0.45, half * 0.05, half * 0.15, 0, Math.PI * 2);
-    ctx.arc(half * 0.45, half * 0.05, half * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // === Head (skin) ===
-  ctx.fillStyle = '#FFCCB0';
-  ctx.beginPath();
-  ctx.arc(0, -half * 0.3, half * 0.38, 0, Math.PI * 2);
-  ctx.fill();
-
-  // === Hair (brown, slightly messy) ===
-  ctx.fillStyle = '#5D4037';
-  // Top hair dome
-  ctx.beginPath();
-  ctx.arc(0, -half * 0.42, half * 0.4, Math.PI, 0);
-  ctx.fill();
-  // Side tufts
-  ctx.beginPath();
-  ctx.ellipse(-half * 0.32, -half * 0.35, half * 0.12, half * 0.22, -0.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(half * 0.32, -half * 0.35, half * 0.12, half * 0.22, 0.2, 0, Math.PI * 2);
-  ctx.fill();
-  // Front fringe
-  ctx.fillStyle = '#4E342E';
-  ctx.beginPath();
-  ctx.ellipse(0, -half * 0.52, half * 0.28, half * 0.1, 0, 0, Math.PI);
-  ctx.fill();
-
-  // === Crown (God rank) ===
-  if (rankIdx >= 5) {
-    ctx.fillStyle = '#FFD700';
-    ctx.shadowColor = '#FFD700';
-    ctx.shadowBlur = 8;
-    const crY = -half * 0.68;
-    ctx.beginPath();
-    ctx.moveTo(-half * 0.25, crY + half * 0.12);
-    ctx.lineTo(-half * 0.25, crY);
-    ctx.lineTo(-half * 0.15, crY + half * 0.06);
-    ctx.lineTo(0, crY - half * 0.06);
-    ctx.lineTo(half * 0.15, crY + half * 0.06);
-    ctx.lineTo(half * 0.25, crY);
-    ctx.lineTo(half * 0.25, crY + half * 0.12);
+    ctx.moveTo(-half * 0.3, -half * 0.1);
+    ctx.quadraticCurveTo(-half * 1.0, -half * 0.8 + wingFlap, -half * 0.7, -half * 0.2);
     ctx.closePath();
     ctx.fill();
+    // Right wing
+    ctx.beginPath();
+    ctx.moveTo(half * 0.3, -half * 0.1);
+    ctx.quadraticCurveTo(half * 1.0, -half * 0.8 + wingFlap, half * 0.7, -half * 0.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // === Body ===
+  ctx.fillStyle = form.bodyColor;
+  ctx.shadowColor = form.bodyColor;
+  ctx.shadowBlur = 4;
+  // Rounded creature body
+  ctx.beginPath();
+  ctx.ellipse(0, half * 0.1, half * 0.45, half * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // === Belly accent ===
+  ctx.fillStyle = form.accentColor;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.ellipse(0, half * 0.2, half * 0.25, half * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // === Head ===
+  ctx.fillStyle = form.bodyColor;
+  ctx.beginPath();
+  ctx.arc(0, -half * 0.25, half * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // === Ears ===
+  if (form.feature === 'ears' || form.feature === 'tail') {
+    ctx.fillStyle = form.bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(-half * 0.25, -half * 0.5);
+    ctx.lineTo(-half * 0.15, -half * 0.8);
+    ctx.lineTo(-half * 0.02, -half * 0.5);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(half * 0.02, -half * 0.5);
+    ctx.lineTo(half * 0.15, -half * 0.8);
+    ctx.lineTo(half * 0.25, -half * 0.5);
+    ctx.fill();
+    // Inner ears
+    ctx.fillStyle = form.accentColor;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-half * 0.2, -half * 0.52);
+    ctx.lineTo(-half * 0.14, -half * 0.72);
+    ctx.lineTo(-half * 0.06, -half * 0.52);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(half * 0.06, -half * 0.52);
+    ctx.lineTo(half * 0.14, -half * 0.72);
+    ctx.lineTo(half * 0.2, -half * 0.52);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // === Mane (wolf) ===
+  if (form.feature === 'mane') {
+    ctx.fillStyle = form.accentColor;
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI * 0.8 + (Math.PI * 1.6 / 4) * i;
+      const wave = Math.sin(t * 3 + i) * 2;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * half * 0.4, -half * 0.25 + Math.sin(a) * half * 0.35, half * 0.12 + wave, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // === Armor plates (iron bear) ===
+  if (form.feature === 'armor') {
+    ctx.fillStyle = form.accentColor;
+    ctx.globalAlpha = 0.6;
+    roundRect(-half * 0.35, -half * 0.05, half * 0.7, half * 0.35, 3);
+    ctx.fill();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#fff';
+    roundRect(-half * 0.3, -half * 0.02, half * 0.6, half * 0.12, 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // === Halo (celestial dragon) ===
+  if (form.feature === 'halo') {
+    ctx.strokeStyle = form.accentColor;
+    ctx.shadowColor = form.accentColor;
+    ctx.shadowBlur = 10 + Math.sin(t * 2) * 4;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, -half * 0.65, half * 0.25, half * 0.08, 0, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.shadowBlur = 0;
-    // Gems on crown
-    ctx.fillStyle = '#E53935';
-    ctx.beginPath();
-    ctx.arc(0, crY + half * 0.02, 2, 0, Math.PI * 2);
-    ctx.fill();
+    // Floating orbs
+    for (let i = 0; i < 4; i++) {
+      const oa = t * 1.5 + i * Math.PI / 2;
+      const ox = Math.cos(oa) * half * 0.6;
+      const oy = Math.sin(oa) * half * 0.6;
+      ctx.fillStyle = form.accentColor;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3 + i);
+      ctx.beginPath();
+      ctx.arc(ox, oy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // === Eyes ===
-  const lookX = facing === 'left' ? -1.5 : facing === 'right' ? 1.5 : 0;
-  // Whites
+  const lookX = facing === 'left' ? -2 : facing === 'right' ? 2 : 0;
   ctx.fillStyle = '#fff';
   ctx.beginPath();
-  ctx.ellipse(-half * 0.15, -half * 0.3, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
-  ctx.ellipse(half * 0.15, -half * 0.3, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
+  ctx.ellipse(-half * 0.14, -half * 0.28, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
+  ctx.ellipse(half * 0.14, -half * 0.28, half * 0.1, half * 0.08, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Irises (brown)
-  ctx.fillStyle = '#5D4037';
+  ctx.fillStyle = form.accentColor;
   ctx.beginPath();
-  ctx.arc(-half * 0.15 + lookX, -half * 0.3, half * 0.055, 0, Math.PI * 2);
-  ctx.arc(half * 0.15 + lookX, -half * 0.3, half * 0.055, 0, Math.PI * 2);
+  ctx.arc(-half * 0.14 + lookX, -half * 0.28, half * 0.05, 0, Math.PI * 2);
+  ctx.arc(half * 0.14 + lookX, -half * 0.28, half * 0.05, 0, Math.PI * 2);
   ctx.fill();
-  // Pupils
-  ctx.fillStyle = '#1a1a1a';
+  ctx.fillStyle = '#111';
   ctx.beginPath();
-  ctx.arc(-half * 0.15 + lookX, -half * 0.3, half * 0.025, 0, Math.PI * 2);
-  ctx.arc(half * 0.15 + lookX, -half * 0.3, half * 0.025, 0, Math.PI * 2);
+  ctx.arc(-half * 0.14 + lookX, -half * 0.28, half * 0.025, 0, Math.PI * 2);
+  ctx.arc(half * 0.14 + lookX, -half * 0.28, half * 0.025, 0, Math.PI * 2);
   ctx.fill();
-  // Eye shine
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   ctx.beginPath();
-  ctx.arc(-half * 0.18, -half * 0.32, half * 0.02, 0, Math.PI * 2);
-  ctx.arc(half * 0.12, -half * 0.32, half * 0.02, 0, Math.PI * 2);
+  ctx.arc(-half * 0.17, -half * 0.3, half * 0.015, 0, Math.PI * 2);
+  ctx.arc(half * 0.11, -half * 0.3, half * 0.015, 0, Math.PI * 2);
   ctx.fill();
 
-  // === Smile ===
-  ctx.strokeStyle = '#A1887F';
-  ctx.lineWidth = Math.max(1, s * 0.025);
+  // === Mouth (small curve) ===
+  ctx.strokeStyle = form.accentColor;
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = Math.max(1, s * 0.02);
   ctx.beginPath();
-  ctx.arc(0, -half * 0.22, half * 0.12, 0.2, Math.PI - 0.2);
+  ctx.arc(0, -half * 0.18, half * 0.08, 0.3, Math.PI - 0.3);
   ctx.stroke();
+  ctx.globalAlpha = 1;
 
-  // === Legs ===
-  ctx.fillStyle = '#3E2723';
-  ctx.fillRect(-half * 0.3, half * 0.55, half * 0.2, half * 0.35);
-  ctx.fillRect(half * 0.1, half * 0.55, half * 0.2, half * 0.35);
-  // Shoes
-  ctx.fillStyle = rankIdx >= 4 ? '#7B1FA2' : '#795548';
-  ctx.fillRect(-half * 0.35, half * 0.85, half * 0.3, half * 0.1);
-  ctx.fillRect(half * 0.05, half * 0.85, half * 0.3, half * 0.1);
+  // === Legs / Paws ===
+  ctx.fillStyle = form.bodyColor;
+  ctx.fillRect(-half * 0.25, half * 0.4, half * 0.18, half * 0.25);
+  ctx.fillRect(half * 0.07, half * 0.4, half * 0.18, half * 0.25);
+  // Paw pads
+  ctx.fillStyle = form.accentColor;
+  ctx.globalAlpha = 0.4;
+  ctx.beginPath();
+  ctx.arc(-half * 0.16, half * 0.62, half * 0.07, 0, Math.PI * 2);
+  ctx.arc(half * 0.16, half * 0.62, half * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
 
-  // === Sword (Hacker+) ===
+  // === Rank sparkles (high ranks) ===
   if (rankIdx >= 4) {
-    const swordSide = facing === 'left' ? -1 : 1;
-    ctx.save();
-    ctx.translate(half * 0.55 * swordSide, -half * 0.1);
-    ctx.rotate(swordSide * 0.3 + Math.sin(t * 2) * 0.1);
-    // Blade
-    ctx.fillStyle = rankIdx >= 5 ? '#00E5FF' : '#B0BEC5';
-    ctx.fillRect(-1.5, -half * 0.6, 3, half * 0.5);
-    // Guard
-    ctx.fillStyle = '#FFD700';
-    ctx.fillRect(-4, -half * 0.12, 8, 3);
-    // Handle
-    ctx.fillStyle = '#5D4037';
-    ctx.fillRect(-1, -half * 0.08, 2, half * 0.15);
-    ctx.restore();
-  }
-
-  // === God sparkles ===
-  if (rankIdx >= 5) {
-    for (let i = 0; i < 6; i++) {
-      const sa = t * 2 + i * Math.PI / 3;
-      const sr = half * 0.7 + Math.sin(t * 3 + i) * 5;
-      const sx = Math.cos(sa) * sr;
-      const sy = Math.sin(sa) * sr;
-      ctx.fillStyle = `rgba(0, 229, 255, ${0.4 + 0.3 * Math.sin(t * 4 + i)})`;
+    for (let i = 0; i < 4 + rankIdx; i++) {
+      const sa = t * 2 + i * Math.PI / (2 + rankIdx);
+      const sr = half * 0.7 + Math.sin(t * 3 + i) * 4;
+      ctx.fillStyle = `${form.accentColor}${Math.floor((0.3 + 0.3 * Math.sin(t * 4 + i)) * 255).toString(16).padStart(2, '0')}`;
       ctx.beginPath();
-      ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+      ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -1018,85 +1154,185 @@ function drawAvatar(cx, cy, size, rankIdx, facing) {
   ctx.restore();
 }
 
-// ── Mom NPC Drawing ─────────────────────────────────────────
-function drawMom(cx, cy, size) {
+// ── Guide NPC Drawing (transforms each level) ──────────────
+function drawGuide(cx, cy, size) {
   const s = size;
   const half = s / 2;
   const t = Date.now() / 1000;
+  const form = getGuideForm();
 
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Gentle glow
-  ctx.shadowColor = '#FF80AB';
-  ctx.shadowBlur = 8 + Math.sin(t * 2) * 3;
-
-  // Body (dress)
-  ctx.fillStyle = '#AD1457';
-  ctx.beginPath();
-  ctx.moveTo(-half * 0.45, -half * 0.05);
-  ctx.lineTo(-half * 0.55, half * 0.85);
-  ctx.lineTo(half * 0.55, half * 0.85);
-  ctx.lineTo(half * 0.45, -half * 0.05);
-  ctx.closePath();
-  ctx.fill();
-  // Top
-  ctx.fillStyle = '#C2185B';
-  roundRect(-half * 0.4, -half * 0.1, half * 0.8, half * 0.4, 3);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-
-  // Head (skin)
-  ctx.fillStyle = '#FFCCB0';
-  ctx.beginPath();
-  ctx.arc(0, -half * 0.32, half * 0.35, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair (long, dark brown)
-  ctx.fillStyle = '#3E2723';
-  // Top dome
-  ctx.beginPath();
-  ctx.arc(0, -half * 0.42, half * 0.38, Math.PI, 0);
-  ctx.fill();
-  // Side hair flowing down
-  ctx.beginPath();
-  ctx.ellipse(-half * 0.35, -half * 0.15, half * 0.13, half * 0.4, -0.15, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(half * 0.35, -half * 0.15, half * 0.13, half * 0.4, 0.15, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Eyes
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.ellipse(-half * 0.13, -half * 0.32, half * 0.08, half * 0.06, 0, 0, Math.PI * 2);
-  ctx.ellipse(half * 0.13, -half * 0.32, half * 0.08, half * 0.06, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#5D4037';
-  ctx.beginPath();
-  ctx.arc(-half * 0.13, -half * 0.32, half * 0.04, 0, Math.PI * 2);
-  ctx.arc(half * 0.13, -half * 0.32, half * 0.04, 0, Math.PI * 2);
-  ctx.fill();
-  // Eye shine
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.beginPath();
-  ctx.arc(-half * 0.15, -half * 0.34, half * 0.015, 0, Math.PI * 2);
-  ctx.arc(half * 0.11, -half * 0.34, half * 0.015, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Warm smile
-  ctx.strokeStyle = '#A1887F';
-  ctx.lineWidth = Math.max(1, s * 0.025);
-  ctx.beginPath();
-  ctx.arc(0, -half * 0.24, half * 0.1, 0.2, Math.PI - 0.2);
-  ctx.stroke();
-
-  // Heart icon floating above (hint she gives help)
+  // Floating bob
   const bob = Math.sin(t * 2) * 3;
-  drawHeart(0, -half * 0.75 + bob, half * 0.12, '#FF80AB');
+  ctx.translate(0, bob);
+
+  // Glow aura
+  ctx.shadowColor = form.color;
+  ctx.shadowBlur = 10 + Math.sin(t * 2) * 4;
+
+  if (form.shape === 'round') {
+    // Old Toad — round green blob
+    ctx.fillStyle = form.color;
+    ctx.beginPath();
+    ctx.ellipse(0, half * 0.1, half * 0.45, half * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Belly
+    ctx.fillStyle = form.accent;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.ellipse(0, half * 0.2, half * 0.25, half * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Big eyes on top
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-half * 0.2, -half * 0.2, half * 0.15, 0, Math.PI * 2);
+    ctx.arc(half * 0.2, -half * 0.2, half * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(-half * 0.2, -half * 0.2, half * 0.07, 0, Math.PI * 2);
+    ctx.arc(half * 0.2, -half * 0.2, half * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+    // Smile
+    ctx.strokeStyle = '#2E7D32';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, half * 0.05, half * 0.12, 0.3, Math.PI - 0.3);
+    ctx.stroke();
+  } else if (form.shape === 'float') {
+    // Lantern Ghost — floaty wisp
+    ctx.fillStyle = form.color;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-half * 0.3, half * 0.6);
+    ctx.quadraticCurveTo(-half * 0.5, 0, 0, -half * 0.5);
+    ctx.quadraticCurveTo(half * 0.5, 0, half * 0.3, half * 0.6);
+    ctx.quadraticCurveTo(half * 0.1, half * 0.4 + Math.sin(t * 4) * 3, 0, half * 0.6 + Math.sin(t * 3) * 3);
+    ctx.quadraticCurveTo(-half * 0.1, half * 0.4, -half * 0.3, half * 0.6);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    // Lantern flame inside
+    ctx.fillStyle = form.accent;
+    ctx.beginPath();
+    ctx.arc(0, -half * 0.1, half * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes (glowing dots)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-half * 0.1, -half * 0.2, half * 0.06, 0, Math.PI * 2);
+    ctx.arc(half * 0.1, -half * 0.2, half * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (form.shape === 'wide') {
+    // Mushroom Sage — wide cap
+    ctx.fillStyle = form.color;
+    ctx.beginPath();
+    ctx.ellipse(0, -half * 0.1, half * 0.55, half * 0.3, 0, Math.PI, 0);
+    ctx.fill();
+    // Spots
+    ctx.fillStyle = form.accent;
+    ctx.beginPath();
+    ctx.arc(-half * 0.2, -half * 0.25, half * 0.07, 0, Math.PI * 2);
+    ctx.arc(half * 0.15, -half * 0.3, half * 0.05, 0, Math.PI * 2);
+    ctx.arc(half * 0.05, -half * 0.2, half * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+    // Stem
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#FFF3E0';
+    roundRect(-half * 0.2, -half * 0.1, half * 0.4, half * 0.6, 4);
+    ctx.fill();
+    // Face
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(-half * 0.08, half * 0.1, half * 0.04, 0, Math.PI * 2);
+    ctx.arc(half * 0.08, half * 0.1, half * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (form.shape === 'angular') {
+    // Crystal Golem — geometric
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = form.color;
+    drawHexagon(0, 0, half * 0.5);
+    ctx.fill();
+    ctx.strokeStyle = form.accent;
+    ctx.lineWidth = 1;
+    drawHexagon(0, 0, half * 0.5);
+    ctx.stroke();
+    // Inner crystal
+    ctx.fillStyle = form.accent;
+    ctx.globalAlpha = 0.4;
+    drawHexagon(0, 0, half * 0.25);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-half * 0.12, -half * 0.08, half * 0.06, 0, Math.PI * 2);
+    ctx.arc(half * 0.12, -half * 0.08, half * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (form.shape === 'tall') {
+    // Bone Oracle — tall thin
+    ctx.fillStyle = form.color;
+    ctx.shadowBlur = 0;
+    roundRect(-half * 0.15, -half * 0.5, half * 0.3, half * 1.1, 5);
+    ctx.fill();
+    // Skull head
+    ctx.beginPath();
+    ctx.arc(0, -half * 0.4, half * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    // Empty eye sockets
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(-half * 0.08, -half * 0.4, half * 0.07, 0, Math.PI * 2);
+    ctx.arc(half * 0.08, -half * 0.4, half * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+    // Glowing eyes
+    ctx.fillStyle = form.accent;
+    ctx.beginPath();
+    ctx.arc(-half * 0.08, -half * 0.4, half * 0.035, 0, Math.PI * 2);
+    ctx.arc(half * 0.08, -half * 0.4, half * 0.035, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Star Child — glowing orb
+    const pulse = 0.8 + 0.2 * Math.sin(t * 2);
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, half * 0.5);
+    grd.addColorStop(0, form.accent);
+    grd.addColorStop(0.6, form.color);
+    grd.addColorStop(1, 'rgba(255,215,0,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, half * 0.45 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Star shape inside
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.7;
+    drawStar(0, 0, half * 0.1, half * 0.25, 5);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Eyes
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(-half * 0.08, -half * 0.05, half * 0.04, 0, Math.PI * 2);
+    ctx.arc(half * 0.08, -half * 0.05, half * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Floating sparkle above
+  ctx.shadowBlur = 0;
+  const sparkBob = Math.sin(t * 3) * 3;
+  ctx.fillStyle = form.accent;
+  drawStar(0, -half * 0.7 + sparkBob, 2, 5, 4);
+  ctx.fill();
 
   ctx.restore();
 }
+
+// Keep drawMom as alias for compatibility
+function drawMom(cx, cy, size) { drawGuide(cx, cy, size); }
 
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
@@ -1340,16 +1576,19 @@ function drawTitle() {
   drawTextBold('Rise of the God', W / 2, 230, '#CE93D8', 28, 'center');
   ctx.shadowBlur = 0;
 
-  // Henry (rank cycles through to show progression)
+  // Hero cycles through all forms to preview progression
   const aIdx = Math.floor((Date.now() / 1500) % 6);
+  const savedLevel = level;
+  level = aIdx; // temporarily set level for form lookup
   drawAvatar(W / 2 - 60, 330, 55, aIdx);
-  drawText('Henry', W / 2 - 60, 380, '#FFD700', 14, 'center');
-  drawText(RANKS[aIdx].name, W / 2 - 60, 398, RANKS[aIdx].color, 12, 'center');
+  drawText(HERO_FORMS[aIdx].name, W / 2 - 60, 380, HERO_FORMS[aIdx].accentColor, 14, 'center');
+  drawText(HERO_FORMS[aIdx].species, W / 2 - 60, 398, '#888', 10, 'center');
 
-  // Mom
-  drawMom(W / 2 + 60, 335, 50);
-  drawText('Mom', W / 2 + 60, 380, '#FF80AB', 14, 'center');
+  // Guide cycles too
+  drawGuide(W / 2 + 60, 335, 50);
+  drawText(GUIDE_FORMS[aIdx].name, W / 2 + 60, 380, GUIDE_FORMS[aIdx].color, 14, 'center');
   drawText('Guide', W / 2 + 60, 398, '#888', 12, 'center');
+  level = savedLevel;
 
   // Prompt (touch-friendly)
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
@@ -1357,7 +1596,7 @@ function drawTitle() {
   drawTextBold('Tap or Press ENTER to Start', W / 2, 460, '#fff', 22, 'center');
   ctx.globalAlpha = 1;
 
-  drawText("Help Henry collect keys and conquer the mansion!", W / 2, 510, '#888', 14, 'center');
+  drawText("Transform. Conquer. Rise.", W / 2, 510, '#888', 14, 'center');
 }
 
 function updateTitle() {
@@ -1383,76 +1622,87 @@ function drawOverworld() {
 
   const t = Date.now() / 1000;
 
-  // === Pass 1: Ground tiles with 3D depth ===
+  // === Pass 1: Ground tiles — biome-specific rendering ===
+  const theme = getTheme();
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const tile = overworldMap[r][c];
       const tx = c * TILE;
       const ty = r * TILE;
       const depthShade = Math.floor(r * 0.8);
+      const noise = ((r * 7 + c * 13) % 5);
 
       switch (tile) {
         case 'grass':
         case 'tree':
         case 'portal': {
-          const hue = 120 + ((r + c) % 3) - 1;
-          const sat = 50 + ((r + c) % 3) * 5;
-          const light = 35 + depthShade + ((r * c) % 5) * 2;
-          // 3D raised tile
-          ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+          // Ground color from biome
+          ctx.fillStyle = (r + c) % 2 === 0 ? theme.groundColor : theme.groundAccent;
           ctx.fillRect(tx, ty, TILE, TILE);
-          // 3D edges: top highlight, bottom/right shadow
-          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          // 3D edges
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
           ctx.fillRect(tx, ty, TILE, 2);
           ctx.fillRect(tx, ty, 2, TILE);
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillStyle = 'rgba(0,0,0,0.12)';
           ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
           ctx.fillRect(tx + TILE - 3, ty, 3, TILE);
-          // Bevel inner highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.04)';
-          ctx.fillRect(tx + 2, ty + 2, TILE - 4, TILE - 4);
-          // Grass blades
-          if ((r + c) % 3 === 0) {
-            ctx.strokeStyle = `hsl(120, 60%, ${28 + depthShade}%)`;
+          // Biome-specific ground details
+          if (theme.biome === 'meadow' && noise < 2) {
+            ctx.strokeStyle = '#3a6a2a';
             ctx.lineWidth = 1;
             const sway = Math.sin(t * 1.5 + c * 0.5 + r * 0.3) * 2;
             ctx.beginPath();
             ctx.moveTo(tx + 10, ty + TILE);
-            ctx.lineTo(tx + 12 + sway, ty + TILE - 12);
-            ctx.moveTo(tx + 25, ty + TILE);
-            ctx.lineTo(tx + 23 + sway * 0.7, ty + TILE - 9);
-            ctx.moveTo(tx + 33, ty + TILE - 2);
-            ctx.lineTo(tx + 35 + sway * 0.5, ty + TILE - 11);
+            ctx.lineTo(tx + 12 + sway, ty + TILE - 10);
+            ctx.moveTo(tx + 28, ty + TILE);
+            ctx.lineTo(tx + 26 + sway * 0.7, ty + TILE - 8);
             ctx.stroke();
+          } else if (theme.biome === 'desert' && noise < 2) {
+            ctx.fillStyle = 'rgba(200,180,100,0.2)';
+            ctx.beginPath();
+            ctx.arc(tx + 10 + noise * 5, ty + 20 + noise * 3, 3, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (theme.biome === 'swamp' && noise < 3) {
+            ctx.fillStyle = 'rgba(50,80,50,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(tx + 20, ty + 20, 6 + noise * 2, 3, noise * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (theme.biome === 'mountain' && noise < 2) {
+            ctx.fillStyle = 'rgba(100,100,100,0.2)';
+            ctx.fillRect(tx + 5 + noise * 6, ty + 8 + noise * 4, 8, 4);
+          } else if (theme.biome === 'void' && noise < 2) {
+            ctx.fillStyle = `rgba(200,100,255,${0.05 + 0.03 * Math.sin(t + c + r)})`;
+            ctx.fillRect(tx, ty, TILE, TILE);
+          } else if (theme.biome === 'inferno' && noise < 3) {
+            const flicker = 0.1 + 0.08 * Math.sin(t * 3 + c * 2 + r);
+            ctx.fillStyle = `rgba(255,100,0,${flicker})`;
+            ctx.beginPath();
+            ctx.arc(tx + 10 + noise * 5, ty + 15 + noise * 3, 4, 0, Math.PI * 2);
+            ctx.fill();
           }
           break;
         }
         case 'flower': {
-          ctx.fillStyle = `hsl(120, 50%, ${37 + depthShade}%)`;
+          ctx.fillStyle = (r + c) % 2 === 0 ? theme.groundColor : theme.groundAccent;
           ctx.fillRect(tx, ty, TILE, TILE);
-          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
           ctx.fillRect(tx, ty, TILE, 2);
           ctx.fillRect(tx, ty, 2, TILE);
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillStyle = 'rgba(0,0,0,0.12)';
           ctx.fillRect(tx, ty + TILE - 3, TILE, 3);
-          // Stem
-          ctx.strokeStyle = '#2E7D32';
-          ctx.lineWidth = 2;
+          // Biome flower
+          const fc = theme.flowerColors[(r + c) % theme.flowerColors.length];
           const sway = Math.sin(t * 1.2 + c + r) * 1.5;
-          ctx.beginPath();
-          ctx.moveTo(tx + TILE / 2, ty + TILE - 5);
-          ctx.lineTo(tx + TILE / 2 + sway, ty + TILE / 2 + 3);
-          ctx.stroke();
-          // 3D petals with shadow
-          const flowerColors = ['#FF69B4', '#FFD700', '#FF6347', '#DA70D6'];
-          const fc = flowerColors[(r + c) % flowerColors.length];
           const fcx = tx + TILE / 2 + sway;
           const fcy = ty + TILE / 2;
-          // Shadow under flower
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
-          ctx.beginPath();
-          ctx.ellipse(fcx + 2, fcy + 3, 8, 4, 0, 0, Math.PI * 2);
-          ctx.fill();
+          if (theme.biome !== 'void' && theme.biome !== 'inferno') {
+            ctx.strokeStyle = '#2E7D32';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(tx + TILE / 2, ty + TILE - 5);
+            ctx.lineTo(fcx, fcy + 3);
+            ctx.stroke();
+          }
           ctx.fillStyle = fc;
           for (let p = 0; p < 5; p++) {
             const a = (Math.PI * 2 / 5) * p + t * 0.3;
@@ -1460,40 +1710,42 @@ function drawOverworld() {
             ctx.ellipse(fcx + Math.cos(a) * 5, fcy + Math.sin(a) * 5, 4, 2.5, a, 0, Math.PI * 2);
             ctx.fill();
           }
-          // Bright center
-          ctx.fillStyle = '#FFD700';
-          ctx.shadowColor = '#FFD700';
-          ctx.shadowBlur = 4;
+          ctx.fillStyle = theme.biome === 'inferno' ? '#FF4500' : '#FFD700';
           ctx.beginPath();
           ctx.arc(fcx, fcy, 3, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
           break;
         }
         case 'water': {
-          const waveLight = 48 + Math.sin(t * 1.5 + r * 0.7 + c * 0.5) * 6;
-          // Sunken water tile (3D inset)
-          ctx.fillStyle = `hsl(210, 70%, ${waveLight}%)`;
+          // Water color from biome (lava for inferno!)
+          ctx.fillStyle = theme.waterColor;
           ctx.fillRect(tx, ty, TILE, TILE);
-          // Dark edges for inset look
-          ctx.fillStyle = 'rgba(0,0,40,0.3)';
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
           ctx.fillRect(tx, ty, TILE, 3);
           ctx.fillRect(tx, ty, 3, TILE);
-          ctx.fillStyle = 'rgba(100,180,255,0.15)';
-          ctx.fillRect(tx, ty + TILE - 2, TILE, 2);
-          ctx.fillRect(tx + TILE - 2, ty, 2, TILE);
-          // Animated ripples
-          ctx.strokeStyle = `rgba(255,255,255,${0.25 + 0.15 * Math.sin(t * 2 + c)})`;
-          ctx.lineWidth = 1;
-          for (let rp = 0; rp < 3; rp++) {
-            const rx = tx + 8 + rp * 12;
-            const ry = ty + TILE / 2 + Math.sin(t * 2 + c + rp) * 4;
+          if (theme.biome === 'inferno') {
+            // Lava bubbles
+            const bubble = Math.sin(t * 2 + c + r * 2) * 0.3;
+            ctx.fillStyle = `rgba(255,200,0,${0.3 + bubble})`;
             ctx.beginPath();
-            ctx.arc(rx, ry, 4 + rp * 2, 0, Math.PI);
-            ctx.stroke();
+            ctx.arc(tx + 15 + Math.sin(t + c) * 3, ty + 20, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,100,0,${0.5 + bubble})`;
+            ctx.beginPath();
+            ctx.arc(tx + 30, ty + 12 + Math.sin(t * 1.5 + r) * 3, 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.strokeStyle = `rgba(255,255,255,${0.2 + 0.1 * Math.sin(t * 2 + c)})`;
+            ctx.lineWidth = 1;
+            for (let rp = 0; rp < 3; rp++) {
+              const rx = tx + 8 + rp * 12;
+              const ry = ty + TILE / 2 + Math.sin(t * 2 + c + rp) * 4;
+              ctx.beginPath();
+              ctx.arc(rx, ry, 4 + rp * 2, 0, Math.PI);
+              ctx.stroke();
+            }
           }
-          // Specular highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.fillStyle = 'rgba(255,255,255,0.15)';
           ctx.fillRect(tx + 4, ty + 4, 6, 3);
           break;
         }
@@ -1501,58 +1753,142 @@ function drawOverworld() {
     }
   }
 
-  // === Pass 2: Trees with 3D shadows and depth ===
-  // Sort by Y for depth ordering
+  // === Pass 2: Obstacles with biome-specific rendering ===
   const sortedTrees = overworldEntities.filter(e => e.type === 'tree').sort((a, b) => a.y - b.y);
-  // Draw shadows first
+  // Shadows
   sortedTrees.forEach(e => {
     const tx = e.x * TILE;
     const ty = e.y * TILE;
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(tx + TILE / 2 + 8, ty + TILE + 2, 18, 7, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(tx + TILE / 2 + 5, ty + TILE, 16, 6, 0, 0, Math.PI * 2);
     ctx.fill();
   });
-  // Draw trees front-to-back
+  // Draw obstacles
   sortedTrees.forEach(e => {
     const tx = e.x * TILE;
     const ty = e.y * TILE;
-    // 3D trunk with visible front and side
-    const trunkGrad = ctx.createLinearGradient(tx + 14, ty, tx + 26, ty);
-    trunkGrad.addColorStop(0, '#5D4037');
-    trunkGrad.addColorStop(0.4, '#795548');
-    trunkGrad.addColorStop(1, '#3E2723');
-    ctx.fillStyle = trunkGrad;
-    ctx.fillRect(tx + 14, ty + 14, 12, 26);
-    // Trunk right side (3D)
-    ctx.fillStyle = '#3E2723';
-    ctx.fillRect(tx + 26, ty + 14, 3, 26);
-    // Trunk front bottom
-    ctx.fillStyle = '#2E1B0E';
-    ctx.fillRect(tx + 14, ty + 38, 15, 4);
-    // Multi-layer canopy for 3D depth
-    ctx.fillStyle = '#1B5E20';
-    ctx.beginPath();
-    ctx.arc(tx + TILE / 2 + 3, ty + 18, 14, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#2E7D32';
-    ctx.beginPath();
-    ctx.arc(tx + TILE / 2, ty + 13, 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#43A047';
-    ctx.beginPath();
-    ctx.arc(tx + TILE / 2 - 3, ty + 8, 12, 0, Math.PI * 2);
-    ctx.fill();
-    // 3D highlights (sunlight from top-left)
-    ctx.fillStyle = 'rgba(150,255,150,0.15)';
-    ctx.beginPath();
-    ctx.arc(tx + TILE / 2 - 7, ty + 5, 7, 0, Math.PI * 2);
-    ctx.fill();
-    // Canopy shadow (bottom edge darker)
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    ctx.beginPath();
-    ctx.arc(tx + TILE / 2 + 2, ty + 20, 12, 0, Math.PI);
-    ctx.fill();
+    const cx = tx + TILE / 2;
+    const cy = ty + TILE / 2;
+
+    if (theme.biome === 'meadow') {
+      // Green trees
+      ctx.fillStyle = '#5D4037';
+      ctx.fillRect(tx + 15, ty + 16, 10, 24);
+      ctx.fillStyle = '#1B5E20';
+      ctx.beginPath(); ctx.arc(cx + 2, ty + 17, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#2E7D32';
+      ctx.beginPath(); ctx.arc(cx, ty + 12, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#43A047';
+      ctx.beginPath(); ctx.arc(cx - 2, ty + 7, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(150,255,150,0.12)';
+      ctx.beginPath(); ctx.arc(cx - 5, ty + 5, 6, 0, Math.PI * 2); ctx.fill();
+    } else if (theme.biome === 'swamp') {
+      // Dead trees with hanging moss
+      ctx.fillStyle = '#3a3030';
+      ctx.fillRect(tx + 16, ty + 8, 8, 32);
+      // Branches
+      ctx.strokeStyle = '#4a4040';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(tx + 16, ty + 14); ctx.lineTo(tx + 6, ty + 8);
+      ctx.moveTo(tx + 24, ty + 18); ctx.lineTo(tx + 34, ty + 10);
+      ctx.moveTo(tx + 16, ty + 24); ctx.lineTo(tx + 8, ty + 22);
+      ctx.stroke();
+      // Hanging moss
+      ctx.strokeStyle = 'rgba(100,140,80,0.5)';
+      ctx.lineWidth = 1;
+      const sway = Math.sin(t * 0.8 + e.x) * 2;
+      ctx.beginPath();
+      ctx.moveTo(tx + 8, ty + 10); ctx.lineTo(tx + 8 + sway, ty + 22);
+      ctx.moveTo(tx + 32, ty + 12); ctx.lineTo(tx + 32 + sway, ty + 24);
+      ctx.stroke();
+    } else if (theme.biome === 'desert') {
+      // Cactus
+      ctx.fillStyle = '#4a7a3a';
+      ctx.fillRect(tx + 16, ty + 10, 8, 28);
+      // Arms
+      ctx.fillRect(tx + 6, ty + 14, 10, 6);
+      ctx.fillRect(tx + 6, ty + 8, 6, 12);
+      ctx.fillRect(tx + 24, ty + 18, 10, 6);
+      ctx.fillRect(tx + 28, ty + 12, 6, 12);
+      // Highlights
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(tx + 17, ty + 10, 2, 28);
+    } else if (theme.biome === 'mountain') {
+      // Rock formation
+      ctx.fillStyle = '#6a6a6a';
+      ctx.beginPath();
+      ctx.moveTo(tx + 5, ty + TILE);
+      ctx.lineTo(tx + 12, ty + 8);
+      ctx.lineTo(tx + 20, ty + 4);
+      ctx.lineTo(tx + 28, ty + 10);
+      ctx.lineTo(tx + 35, ty + TILE);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.beginPath();
+      ctx.moveTo(tx + 14, ty + 8);
+      ctx.lineTo(tx + 20, ty + 4);
+      ctx.lineTo(tx + 24, ty + 12);
+      ctx.closePath();
+      ctx.fill();
+      // Snow cap on some
+      if (e.x % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.moveTo(tx + 16, ty + 8);
+        ctx.lineTo(tx + 20, ty + 4);
+        ctx.lineTo(tx + 24, ty + 8);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (theme.biome === 'void') {
+      // Floating crystal
+      const crystalBob = Math.sin(t * 2 + e.x + e.y) * 3;
+      ctx.save();
+      ctx.shadowColor = '#E040FB';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = theme.obstacleColor;
+      ctx.beginPath();
+      ctx.moveTo(cx, ty + 5 + crystalBob);
+      ctx.lineTo(cx + 10, cy + crystalBob);
+      ctx.lineTo(cx, ty + 35 + crystalBob);
+      ctx.lineTo(cx - 10, cy + crystalBob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.beginPath();
+      ctx.moveTo(cx, ty + 5 + crystalBob);
+      ctx.lineTo(cx + 5, cy - 5 + crystalBob);
+      ctx.lineTo(cx - 3, cy - 3 + crystalBob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else if (theme.biome === 'inferno') {
+      // Lava rocks with glow
+      ctx.save();
+      ctx.shadowColor = '#FF4500';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#2a1a1a';
+      ctx.beginPath();
+      ctx.moveTo(tx + 5, ty + TILE);
+      ctx.lineTo(tx + 10, ty + 10);
+      ctx.lineTo(tx + 20, ty + 5);
+      ctx.lineTo(tx + 30, ty + 12);
+      ctx.lineTo(tx + 35, ty + TILE);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // Glowing cracks
+      ctx.strokeStyle = `rgba(255,100,0,${0.4 + 0.2 * Math.sin(t * 3 + e.x)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(tx + 15, ty + 15);
+      ctx.lineTo(tx + 20, ty + 25);
+      ctx.lineTo(tx + 25, ty + 20);
+      ctx.stroke();
+    }
   });
 
   // Mansion portal with enhanced glow
@@ -2176,9 +2512,10 @@ function drawMansion() {
     ctx.beginPath();
     ctx.ellipse(momX + 1, momY + TILE / 2 - 4, 10, 3, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawMom(momX, momY, TILE - 4);
-    // "Mom" label
-    drawText('Mom', momX, momY - TILE / 2 - 2, '#FF80AB', 10, 'center');
+    drawGuide(momX, momY, TILE - 4);
+    // Guide label
+    const guideF = getGuideForm();
+    drawText(guideF.name, momX, momY - TILE / 2 - 2, guideF.color, 10, 'center');
   }
 
   // Mom message bubble (positioned at bottom to avoid overlapping HUD/hearts)
@@ -2193,7 +2530,8 @@ function drawMansion() {
     roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 10);
     ctx.fill();
     ctx.stroke();
-    drawText('Mom:', bubbleX + 12, bubbleY + 18, '#FF80AB', 12);
+    const gForm = getGuideForm();
+    drawText(gForm.name + ':', bubbleX + 12, bubbleY + 18, gForm.color, 12);
     drawText(momMessage, bubbleX + 12, bubbleY + 36, '#fff', 12);
   }
 
@@ -2279,9 +2617,50 @@ function updateMansion(dt) {
   if (input.left)  nx--;
   if (input.right) nx++;
 
+  // Dash (shift) — leap 2 tiles in movement direction, costs 1 heart
+  if (justPressed.shift && currentHearts > 1 && (input.up || input.down || input.left || input.right)) {
+    let dx = 0, dy = 0;
+    if (input.up) dy = -1; else if (input.down) dy = 1;
+    else if (input.left) dx = -1; else if (input.right) dx = 1;
+    const dashX = player.x + dx * 2;
+    const dashY = player.y + dy * 2;
+    if (dashX >= 0 && dashX < COLS && dashY >= 0 && dashY < ROWS) {
+      const dt2 = mansionMap[dashY][dashX];
+      if (dt2 !== 'wall' && dt2 !== 'pillar' && dt2 !== 'crate') {
+        currentHearts--;
+        player.x = dashX;
+        player.y = dashY;
+        player.moveCD = 0.2;
+        spawnParticle(dashX * TILE + TILE / 2, dashY * TILE + TILE / 2, getHeroForm().accentColor, 8);
+        screenShake(2, 0.1);
+        SFX.portalEnter();
+        // Skip to key/heart/monster checks below
+        nx = dashX;
+        ny = dashY;
+      }
+    }
+  }
+
   if (nx !== player.x || ny !== player.y) {
     if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
     const destTile = mansionMap[ny][nx];
+
+    // Smash crates by walking into them (press space)
+    if (destTile === 'crate' && (justPressed.space || input.space)) {
+      mansionMap[ny][nx] = 'floor';
+      mansionObstacles = mansionObstacles.filter(o => !(o.x === nx && o.y === ny));
+      spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#8B6914', 15);
+      SFX.keyPickup();
+      screenShake(2, 0.1);
+      // 40% chance crate contains a heart
+      if (Math.random() < 0.4) {
+        heartPickups.push({ x: nx, y: ny, collected: false, mansion: true });
+        spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#FF1744', 8);
+      }
+      player.moveCD = 0.15;
+      return;
+    }
+
     if (destTile === 'wall' || destTile === 'pillar' || destTile === 'crate') return;
 
     player.x = nx;
@@ -2289,9 +2668,9 @@ function updateMansion(dt) {
     player.moveCD = 0.12;
     SFX.step();
 
-    // Spike damage — higher chance on trapped/chaos levels
+    // Spike damage — higher chance on trapped/chaos levels (but never unfair)
     const spikeMod = getTheme().modifier;
-    const spikeChance = (spikeMod === 'trapped' || spikeMod === 'chaos') ? 0.6 : 0.3;
+    const spikeChance = (spikeMod === 'trapped' || spikeMod === 'chaos') ? 0.4 : 0.2;
     if (destTile === 'spikes' && Math.random() < spikeChance) {
       currentHearts = Math.max(0, currentHearts - 1);
       spawnParticle(nx * TILE + TILE / 2, ny * TILE + TILE / 2, '#AAA', 6);
@@ -2330,7 +2709,7 @@ function updateMansion(dt) {
       momMessage = MOM_TIPS[Math.floor(Math.random() * MOM_TIPS.length)];
       momMessageTimer = 4;
       SFX.momTalk();
-      // Heal 1 heart as Mom's care
+      // Heal 1 heart as guide's blessing
       if (currentHearts < maxHearts) {
         currentHearts = Math.min(currentHearts + 1, maxHearts);
         spawnParticle(momNPC.x * TILE + TILE / 2, momNPC.y * TILE + TILE / 2, '#FF80AB', 8);
@@ -2635,7 +3014,7 @@ function drawCombat() {
     const hy = plY - 55;
     drawHeart(hx, hy, 7, i < playerCombatHP ? '#FF1744' : '#333');
   }
-  drawText('Henry', plX, plY - 70, '#FFD700', 14, 'center');
+  drawText(getHeroForm().name, plX, plY - 70, getHeroForm().accentColor, 14, 'center');
   drawText(RANKS[getRank(totalKeys)].name, plX, plY + 52, RANKS[getRank(totalKeys)].color, 11, 'center');
 
   // Message box (glass-morphism)
@@ -2990,7 +3369,10 @@ function drawLevelUp() {
     drawText(`Next rank at ${RANKS[rank + 1].threshold} keys`, W / 2, 410, '#888', 14, 'center');
   }
 
-  drawText(`Entering Level ${level + 1}...`, W / 2, 460, '#aaa', 16, 'center');
+  // Show next form preview
+  const nextForm = HERO_FORMS[Math.min(level, HERO_FORMS.length - 1)];
+  drawText(`New form: ${nextForm.species}`, W / 2, 440, nextForm.accentColor, 16, 'center');
+  drawText(`Entering Level ${level + 1}...`, W / 2, 465, '#aaa', 14, 'center');
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
@@ -3034,7 +3416,7 @@ function drawGameOver() {
   drawTextBold('YOU DIED', W / 2, 200, '#F44336', 52, 'center');
   ctx.shadowBlur = 0;
 
-  drawText('The monsters were too strong for Henry...', W / 2, 260, '#888', 18, 'center');
+  drawText('The darkness was too strong...', W / 2, 260, '#888', 18, 'center');
 
   drawText(`Keys Collected: ${totalKeys}`, W / 2, 330, '#FFD700', 20, 'center');
   drawText(`Rank Achieved: ${RANKS[getRank(totalKeys)].name}`, W / 2, 360, RANKS[getRank(totalKeys)].color, 20, 'center');
@@ -3079,18 +3461,17 @@ function drawWin() {
 
   ctx.shadowColor = '#00E5FF';
   ctx.shadowBlur = 30;
-  drawTextBold('HENRY IS A GOD', W / 2, 120, '#00E5FF', 48, 'center');
+  drawTextBold('ASCENSION COMPLETE', W / 2, 120, '#00E5FF', 44, 'center');
   ctx.shadowBlur = 0;
 
-  // Henry in full God form
+  // Final hero form + guide
   drawAvatar(W / 2 - 55, 260, 90, 5);
-  // Mom cheering
-  drawMom(W / 2 + 55, 265, 70);
+  drawGuide(W / 2 + 55, 265, 70);
 
-  drawTextBold('Congratulations, Henry!', W / 2, 350, '#FFD700', 28, 'center');
-  drawText(`All ${totalKeys} keys collected across all levels`, W / 2, 390, '#aaa', 16, 'center');
-  drawText('Henry conquered the Haunted Mansions!', W / 2, 420, '#CE93D8', 16, 'center');
-  drawText('Mom is so proud!', W / 2, 448, '#FF80AB', 14, 'center');
+  drawTextBold('You became the God!', W / 2, 350, '#FFD700', 28, 'center');
+  drawText(`${totalKeys} keys collected across all levels`, W / 2, 390, '#aaa', 16, 'center');
+  drawText('Every form conquered. Every mansion cleared.', W / 2, 420, '#CE93D8', 16, 'center');
+  drawText('The universe bows to you.', W / 2, 448, '#00E5FF', 14, 'center');
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
@@ -3158,8 +3539,9 @@ function updateHUD() {
       heartStr += i < currentHearts ? '\u2764\uFE0F' : '\uD83D\uDDA4';
     }
 
+    const heroF = getHeroForm();
     hudLeft.innerHTML = `
-      <div style="color:${RANKS[rank].color}; font-weight:bold">${RANKS[rank].name}</div>
+      <div style="color:${heroF.accentColor}; font-weight:bold">${heroF.name} <span style="color:${RANKS[rank].color}">(${RANKS[rank].name})</span></div>
       <div>Hearts: ${heartStr}</div>
       <div>Keys: ${totalKeys} total</div>
     `;
