@@ -125,6 +125,27 @@ const SFX = {
     setTimeout(() => playTone(330, 0.15, 'sawtooth', 0.1, 660), 150);
     setTimeout(() => playTone(440, 0.2, 'sawtooth', 0.08), 300);
   },
+  criticalHit() {
+    playTone(800, 0.08, 'sawtooth', 0.12);
+    setTimeout(() => playTone(1200, 0.1, 'sawtooth', 0.14), 60);
+    setTimeout(() => playTone(1600, 0.15, 'sine', 0.12), 120);
+    setTimeout(() => playTone(2000, 0.1, 'sine', 0.08), 200);
+  },
+  achievement() {
+    [660, 880, 1100, 1320].forEach((f, i) => {
+      setTimeout(() => playTone(f, 0.12, 'sine', 0.08), i * 80);
+    });
+  },
+  streakBonus() {
+    playTone(500, 0.08, 'sine', 0.1);
+    setTimeout(() => playTone(700, 0.08, 'sine', 0.1), 80);
+    setTimeout(() => playTone(900, 0.1, 'sine', 0.08), 160);
+  },
+  lootDrop() {
+    playTone(440, 0.06, 'sine', 0.08);
+    setTimeout(() => playTone(660, 0.08, 'sine', 0.1), 70);
+    setTimeout(() => playTone(880, 0.12, 'sine', 0.1), 140);
+  },
 };
 
 const canvas = document.getElementById('game');
@@ -385,6 +406,124 @@ let ambientParticles = [];    // dust motes / fireflies
 let momNPC = null;            // Mom NPC position & state
 let momMessage = '';          // current message from Mom
 let momMessageTimer = 0;      // display timer
+
+// ── Addictive Mechanics ──────────────────────────────────────
+let score = 0;
+let killStreak = 0;
+let bestScore = 0;
+let bestLevel = 0;
+let bestKeys = 0;
+let bestStreak = 0;
+let totalMonstersEverKilled = 0;
+let damageBuffTurns = 0;       // temporary 1.5x damage buff from loot
+let comboVariety = [];         // track last few different elements used
+let scorePopups = [];          // floating "+100" text that rises and fades
+let achievementPopup = null;   // currently displaying achievement
+let achievementPopupQueue = [];
+let lootDropCount = 0;
+let combatStartHP = 0;        // track HP at combat start for "untouchable" achievement
+let noDamageCombat = true;     // did player take 0 damage this fight?
+let levelStartHearts = 0;     // hearts at level start for "flawless"
+
+const ACHIEVEMENTS = [
+  { id: 'first_blood', name: 'First Blood', desc: 'Defeat your first monster' },
+  { id: 'collector_20', name: 'Key Hoarder', desc: 'Collect 20+ keys in one run' },
+  { id: 'streak_3', name: 'On Fire', desc: 'Get a 3-kill streak' },
+  { id: 'streak_5', name: 'Unstoppable', desc: 'Get a 5-kill streak' },
+  { id: 'streak_7', name: 'Rampage', desc: 'Get a 7-kill streak' },
+  { id: 'untouchable', name: 'Untouchable', desc: 'Win a fight taking no damage' },
+  { id: 'critical', name: 'Lucky Strike', desc: 'Land a critical hit' },
+  { id: 'rank_pro', name: 'Going Pro', desc: 'Reach Pro rank' },
+  { id: 'rank_master', name: 'Master Class', desc: 'Reach Master rank' },
+  { id: 'rank_god', name: 'Ascended', desc: 'Reach God rank' },
+  { id: 'flawless', name: 'Flawless', desc: 'Complete a level at full health' },
+  { id: 'champion', name: 'Champion', desc: 'Beat the game' },
+  { id: 'score_1000', name: 'High Roller', desc: 'Score 1000+ points' },
+  { id: 'score_5000', name: 'Score Master', desc: 'Score 5000+ points' },
+  { id: 'loot_5', name: 'Treasure Hunter', desc: 'Collect 5 loot drops' },
+];
+let unlockedAchievements = {};
+
+function loadHighScores() {
+  try {
+    const data = JSON.parse(localStorage.getItem('keyquest_highscores'));
+    if (data) {
+      bestScore = data.bestScore || 0;
+      bestLevel = data.bestLevel || 0;
+      bestKeys = data.bestKeys || 0;
+      bestStreak = data.bestStreak || 0;
+      unlockedAchievements = data.achievements || {};
+    }
+  } catch(e) {}
+}
+
+function saveHighScores() {
+  try {
+    if (score > bestScore) bestScore = score;
+    if (level > bestLevel) bestLevel = level;
+    if (totalKeys > bestKeys) bestKeys = totalKeys;
+    if (killStreak > bestStreak) bestStreak = killStreak;
+    localStorage.setItem('keyquest_highscores', JSON.stringify({
+      bestScore, bestLevel, bestKeys, bestStreak,
+      achievements: unlockedAchievements,
+    }));
+  } catch(e) {}
+}
+
+function addScore(points, x, y, color) {
+  score += points;
+  if (x !== undefined && y !== undefined) {
+    scorePopups.push({ text: '+' + points, x, y, life: 60, maxLife: 60, color: color || '#FFD700' });
+  }
+  checkAutoAchievements();
+}
+
+function unlockAchievement(id) {
+  if (unlockedAchievements[id]) return;
+  const ach = ACHIEVEMENTS.find(a => a.id === id);
+  if (!ach) return;
+  unlockedAchievements[id] = true;
+  achievementPopupQueue.push({ name: ach.name, desc: ach.desc, timer: 180 });
+  SFX.achievement();
+  saveHighScores();
+}
+
+function checkAutoAchievements() {
+  if (score >= 1000) unlockAchievement('score_1000');
+  if (score >= 5000) unlockAchievement('score_5000');
+  if (totalKeys >= 20) unlockAchievement('collector_20');
+  if (lootDropCount >= 5) unlockAchievement('loot_5');
+  const rank = getRank(totalKeys);
+  if (rank >= 2) unlockAchievement('rank_pro');
+  if (rank >= 3) unlockAchievement('rank_master');
+  if (rank >= 5) unlockAchievement('rank_god');
+}
+
+function checkStreakAchievements() {
+  if (killStreak >= 3) unlockAchievement('streak_3');
+  if (killStreak >= 5) unlockAchievement('streak_5');
+  if (killStreak >= 7) unlockAchievement('streak_7');
+}
+
+function getComboMultiplier() {
+  // Reward using different elements in sequence
+  const unique = new Set(comboVariety);
+  if (unique.size >= 4) return 1.8;
+  if (unique.size >= 3) return 1.5;
+  if (unique.size >= 2) return 1.2;
+  return 1.0;
+}
+
+function getComboLabel() {
+  const unique = new Set(comboVariety);
+  if (unique.size >= 4) return 'MEGA COMBO!';
+  if (unique.size >= 3) return 'TRIPLE COMBO!';
+  if (unique.size >= 2) return 'COMBO!';
+  return '';
+}
+
+// Load scores on script initialization
+loadHighScores();
 
 const MOM_TIPS = [
   "Watch the monster's stance — Defend against heavy attacks!",
@@ -1596,7 +1735,23 @@ function drawTitle() {
   drawTextBold('Tap or Press ENTER to Start', W / 2, 460, '#fff', 22, 'center');
   ctx.globalAlpha = 1;
 
-  drawText("Transform. Conquer. Rise.", W / 2, 510, '#888', 14, 'center');
+  // High scores display
+  if (bestScore > 0) {
+    ctx.fillStyle = 'rgba(20,10,40,0.7)';
+    roundRect(W / 2 - 140, 480, 280, 80, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+    ctx.lineWidth = 1;
+    roundRect(W / 2 - 140, 480, 280, 8, 8);
+    ctx.stroke();
+    drawText('PERSONAL BEST', W / 2, 498, '#FFD700', 11, 'center');
+    const achCount = Object.keys(unlockedAchievements).length;
+    drawText(`Score: ${bestScore}  |  Keys: ${bestKeys}  |  Level: ${bestLevel + 1}`, W / 2, 518, '#CE93D8', 11, 'center');
+    drawText(`Best Streak: ${bestStreak}  |  Achievements: ${achCount}/${ACHIEVEMENTS.length}`, W / 2, 536, '#aaa', 10, 'center');
+    drawText("Transform. Conquer. Rise.", W / 2, 556, '#666', 10, 'center');
+  } else {
+    drawText("Transform. Conquer. Rise.", W / 2, 510, '#888', 14, 'center');
+  }
 }
 
 function updateTitle() {
@@ -1605,6 +1760,14 @@ function updateTitle() {
     SFX.menuSelect();
     level = 0;
     totalKeys = 0;
+    score = 0;
+    killStreak = 0;
+    totalMonstersEverKilled = 0;
+    damageBuffTurns = 0;
+    comboVariety = [];
+    lootDropCount = 0;
+    scorePopups = [];
+    loadHighScores();
     startTransition(() => initLevel());
   }
 }
@@ -2090,6 +2253,7 @@ function updateOverworld(dt) {
         currentHearts = Math.min(currentHearts + 1, maxHearts);
         spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
         SFX.heartPickup();
+        addScore(15, h.x * TILE + TILE / 2, h.y * TILE - 10, '#FF1744');
       }
     });
 
@@ -2691,6 +2855,8 @@ function updateMansion(dt) {
         totalKeys++;
         spawnParticle(k.x * TILE + TILE / 2, k.y * TILE + TILE / 2, '#FFD700', 12);
         SFX.keyPickup();
+        addScore(25, k.x * TILE + TILE / 2, k.y * TILE - 10);
+        checkAutoAchievements();
       }
     });
 
@@ -2701,6 +2867,7 @@ function updateMansion(dt) {
         currentHearts = Math.min(currentHearts + 1, maxHearts);
         spawnParticle(h.x * TILE + TILE / 2, h.y * TILE + TILE / 2, '#FF1744', 10);
         SFX.heartPickup();
+        addScore(15, h.x * TILE + TILE / 2, h.y * TILE - 10, '#FF1744');
       }
     });
 
@@ -2800,6 +2967,9 @@ function startCombat(monster) {
   turnNumber = 0;
   comboCount = 0;
   lastElement = '';
+  comboVariety = [];
+  noDamageCombat = true;
+  combatStartHP = currentHearts;
   // Reset cooldowns
   moveCooldowns = {};
   // Pick monster's first stance
@@ -3179,19 +3349,60 @@ function updateCombat(dt) {
           lastElement = moveData.element;
         }
 
+        // Combo variety bonus: reward using different elements
+        if (moveData.element !== 'physical') {
+          comboVariety.push(moveData.element);
+          if (comboVariety.length > 4) comboVariety.shift();
+        }
+        const comboMult = getComboMultiplier();
+        if (comboMult > 1) {
+          finalDmg = Math.max(1, Math.round(finalDmg * comboMult));
+        }
+
+        // Temporary damage buff from loot
+        if (damageBuffTurns > 0) {
+          finalDmg = Math.max(1, Math.round(finalDmg * 1.5));
+          damageBuffTurns--;
+        }
+
+        // Critical hit: 15% chance (+2% per rank) for 2x damage
+        let isCritical = false;
+        const critChance = 0.15 + getRank(totalKeys) * 0.02;
+        if (Math.random() < critChance) {
+          isCritical = true;
+          finalDmg *= 2;
+          unlockAchievement('critical');
+        }
+
         monsterHP -= finalDmg;
 
         // Build message
         let msg = `${move} dealt ${finalDmg} dmg!`;
+        if (isCritical) msg = `CRITICAL HIT! ${move} dealt ${finalDmg} dmg!`;
         if (effectiveness >= 2) msg += ' SUPER EFFECTIVE!';
         else if (effectiveness <= 0.5) msg += ' Not very effective...';
         if (monsterStance === 'guard') msg += ' (Guarded)';
         if (comboCount >= 3) msg += ' (Stale)';
+        const cLabel = getComboLabel();
+        if (cLabel && !isCritical) msg += ` ${cLabel}`;
         combatMessage = msg;
 
-        spawnParticle(W * 0.65, H * 0.35, moveData.color, effectiveness >= 2 ? 25 : 15);
-        screenShake(effectiveness >= 2 ? 5 : 3, effectiveness >= 2 ? 0.3 : 0.2);
-        SFX.playerAttack(effectiveness);
+        // Score for dealing damage
+        let dmgScore = finalDmg * 10;
+        if (isCritical) dmgScore *= 2;
+        if (effectiveness >= 2) dmgScore = Math.round(dmgScore * 1.5);
+        addScore(dmgScore, W * 0.65, H * 0.35 - 80);
+
+        if (isCritical) {
+          spawnParticle(W * 0.65, H * 0.35, '#FFD700', 35);
+          screenShake(8, 0.4);
+          SFX.criticalHit();
+          flashColor = '#FFD700';
+        } else {
+          spawnParticle(W * 0.65, H * 0.35, moveData.color, effectiveness >= 2 ? 25 : 15);
+          screenShake(effectiveness >= 2 ? 5 : 3, effectiveness >= 2 ? 0.3 : 0.2);
+          SFX.playerAttack(effectiveness);
+        }
 
         // Set cooldown
         if (moveData.cooldown > 0) {
@@ -3241,6 +3452,7 @@ function updateCombat(dt) {
 
       if (finalDmg > 0) {
         playerCombatHP -= finalDmg;
+        noDamageCombat = false;
         stanceMsg += ` -${finalDmg} heart${finalDmg > 1 ? 's' : ''}!`;
         spawnParticle(W * 0.25, H * 0.45, '#FF0000', 12);
         screenShake(baseDmg >= 2 ? 6 : 4, 0.25);
@@ -3281,8 +3493,72 @@ function updateCombat(dt) {
     if (combatAnimTimer > 1.2) {
       currentMonster.alive = false;
       if (!currentMonster.respawned) monstersDefeated++;
+      totalMonstersEverKilled++;
+      killStreak++;
+
+      // === Kill score (escalates with streak) ===
+      const killScore = 50 + killStreak * 20 + level * 10;
+      addScore(killScore, currentMonster.x * TILE + TILE / 2, currentMonster.y * TILE + TILE / 2);
+
+      // === Kill streak bonuses ===
+      checkStreakAchievements();
+      if (killStreak === 3) {
+        // 3-kill streak: bonus key
+        totalKeys++;
+        keysThisLevel++;
+        scorePopups.push({ text: 'STREAK x3: +1 KEY!', x: W / 2, y: H / 2 - 40, life: 90, maxLife: 90, color: '#FFD700' });
+        SFX.streakBonus();
+      } else if (killStreak === 5) {
+        // 5-kill streak: heal 2 hearts
+        playerCombatHP = Math.min(playerCombatHP + 2, maxHearts);
+        scorePopups.push({ text: 'STREAK x5: +2 HEARTS!', x: W / 2, y: H / 2 - 40, life: 90, maxLife: 90, color: '#FF1744' });
+        SFX.streakBonus();
+      } else if (killStreak === 7) {
+        // 7-kill streak: bonus 3 keys + damage buff
+        totalKeys += 3;
+        keysThisLevel += 3;
+        damageBuffTurns = 3;
+        scorePopups.push({ text: 'STREAK x7: +3 KEYS + POWER UP!', x: W / 2, y: H / 2 - 40, life: 90, maxLife: 90, color: '#E040FB' });
+        SFX.streakBonus();
+      } else if (killStreak > 0 && killStreak % 3 === 0) {
+        // Every 3 kills after 7: bonus key
+        totalKeys++;
+        keysThisLevel++;
+        scorePopups.push({ text: `STREAK x${killStreak}: +1 KEY!`, x: W / 2, y: H / 2 - 40, life: 90, maxLife: 90, color: '#FFD700' });
+        SFX.streakBonus();
+      }
+
+      // === Untouchable achievement ===
+      if (noDamageCombat) unlockAchievement('untouchable');
+      if (totalMonstersEverKilled === 1) unlockAchievement('first_blood');
+
+      // === Loot drops (variable reward!) ===
+      const lootRoll = Math.random();
+      if (lootRoll < 0.30) {
+        // 30% chance: heart drop
+        playerCombatHP = Math.min(playerCombatHP + 1, maxHearts);
+        lootDropCount++;
+        scorePopups.push({ text: 'LOOT: +1 HEART!', x: W / 2, y: H / 2, life: 70, maxLife: 70, color: '#FF1744' });
+        SFX.lootDrop();
+      } else if (lootRoll < 0.45) {
+        // 15% chance: bonus key
+        totalKeys++;
+        keysThisLevel++;
+        lootDropCount++;
+        scorePopups.push({ text: 'LOOT: +1 KEY!', x: W / 2, y: H / 2, life: 70, maxLife: 70, color: '#FFD700' });
+        SFX.lootDrop();
+      } else if (lootRoll < 0.55) {
+        // 10% chance: damage buff (next 3 attacks deal 1.5x)
+        damageBuffTurns += 3;
+        lootDropCount++;
+        scorePopups.push({ text: 'LOOT: POWER SURGE! (1.5x DMG)', x: W / 2, y: H / 2, life: 70, maxLife: 70, color: '#E040FB' });
+        SFX.lootDrop();
+      }
+      checkAutoAchievements();
+
       // No free heal — you keep whatever HP you survived with
       currentHearts = playerCombatHP;
+      saveHighScores();
       startTransition(() => {
         gameState = STATE.MANSION;
         // Check for level complete
@@ -3294,6 +3570,8 @@ function updateCombat(dt) {
   } else if (combatTurn === 'player_dying') {
     combatAnimTimer += dt;
     if (combatAnimTimer > 1.2) {
+      // Kill streak broken!
+      killStreak = 0;
       // Jeopardy: lose 2 keys (or all remaining if fewer), respawn at mansion entrance
       const keysToLose = Math.min(2, keysThisLevel);
       keysThisLevel -= keysToLose;
@@ -3324,9 +3602,20 @@ function updateCombat(dt) {
 function levelUp() {
   const prevRank = getRank(totalKeys - keysThisLevel);
   const newRank = getRank(totalKeys);
+
+  // Level completion score bonus
+  const levelBonus = 200 + level * 100 + killStreak * 25;
+  addScore(levelBonus);
+
+  // Flawless achievement — completed level at full health
+  if (currentHearts >= maxHearts) unlockAchievement('flawless');
+
   level++;
   SFX.levelUp();
+  saveHighScores();
   if (level >= 6 || totalKeys >= 60) {
+    unlockAchievement('champion');
+    saveHighScores();
     gameState = STATE.WIN;
   } else {
     gameState = STATE.LEVEL_UP;
@@ -3413,19 +3702,67 @@ function drawGameOver() {
 
   ctx.shadowColor = '#F44336';
   ctx.shadowBlur = 25;
-  drawTextBold('YOU DIED', W / 2, 200, '#F44336', 52, 'center');
+  drawTextBold('YOU DIED', W / 2, 130, '#F44336', 48, 'center');
   ctx.shadowBlur = 0;
 
-  drawText('The darkness was too strong...', W / 2, 260, '#888', 18, 'center');
+  // Stats panel
+  const rank = getRank(totalKeys);
+  ctx.fillStyle = 'rgba(20,10,10,0.7)';
+  roundRect(W / 2 - 180, 155, 360, 130, 10);
+  ctx.fill();
 
-  drawText(`Keys Collected: ${totalKeys}`, W / 2, 330, '#FFD700', 20, 'center');
-  drawText(`Rank Achieved: ${RANKS[getRank(totalKeys)].name}`, W / 2, 360, RANKS[getRank(totalKeys)].color, 20, 'center');
-  drawText(`Level Reached: ${level + 1}`, W / 2, 390, '#aaa', 18, 'center');
+  drawText(`Score: ${score}`, W / 2, 180, '#FFD700', 20, 'center');
+  drawText(`Keys: ${totalKeys}  |  Rank: ${RANKS[rank].name}  |  Level: ${level + 1}`, W / 2, 205, RANKS[rank].color, 14, 'center');
+  drawText(`Monsters Slain: ${totalMonstersEverKilled}  |  Best Streak: ${killStreak}`, W / 2, 225, '#aaa', 12, 'center');
+
+  // Near-miss messaging — show how close to next milestone
+  const nextRank = rank < RANKS.length - 1 ? RANKS[rank + 1] : null;
+  if (nextRank) {
+    const keysAway = nextRank.threshold - totalKeys;
+    if (keysAway <= 5) {
+      drawTextBold(`SO CLOSE! Only ${keysAway} more key${keysAway !== 1 ? 's' : ''} to ${nextRank.name}!`, W / 2, 252, '#FF5722', 14, 'center');
+    } else {
+      drawText(`${keysAway} keys to ${nextRank.name} rank`, W / 2, 252, '#888', 12, 'center');
+    }
+  }
+
+  if (keysThisLevel > 0 && keysThisLevel < keysNeeded) {
+    const keysLeft = keysNeeded - keysThisLevel;
+    drawText(`You needed just ${keysLeft} more key${keysLeft !== 1 ? 's' : ''} to escape!`, W / 2, 272, '#FF8A65', 12, 'center');
+  }
+
+  // New best indicators
+  const isNewBest = score > bestScore;
+  if (isNewBest && score > 0) {
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 200);
+    ctx.globalAlpha = pulse;
+    drawTextBold('NEW HIGH SCORE!', W / 2, 310, '#FFD700', 24, 'center');
+    ctx.globalAlpha = 1;
+  } else if (bestScore > 0) {
+    drawText(`Best Score: ${bestScore}  |  Best Level: ${bestLevel + 1}`, W / 2, 310, '#666', 12, 'center');
+  }
+
+  // Motivational messages based on progress
+  let motivation = 'The darkness was too strong...';
+  if (totalMonstersEverKilled >= 5) motivation = 'You fought bravely! Try a different strategy.';
+  if (killStreak >= 3) motivation = 'That streak was impressive! Keep the momentum going.';
+  if (level >= 3) motivation = "You've come so far! The end is within reach.";
+  if (score > bestScore && score > 0) motivation = 'New record! You keep getting better!';
+  drawText(motivation, W / 2, 345, '#888', 13, 'center');
+
+  // Achievements earned this run
+  const achCount = Object.keys(unlockedAchievements).length;
+  if (achCount > 0) {
+    drawText(`Achievements: ${achCount}/${ACHIEVEMENTS.length}`, W / 2, 375, '#CE93D8', 12, 'center');
+  }
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Tap or Press ENTER to try again', W / 2, 470, '#FF8A65', 20, 'center');
+  drawText('Tap or Press ENTER to try again', W / 2, 420, '#FF8A65', 18, 'center');
   ctx.globalAlpha = 1;
+
+  // Save high scores
+  saveHighScores();
 }
 
 function updateGameOver() {
@@ -3469,14 +3806,47 @@ function drawWin() {
   drawGuide(W / 2 + 55, 265, 70);
 
   drawTextBold('You became the God!', W / 2, 350, '#FFD700', 28, 'center');
-  drawText(`${totalKeys} keys collected across all levels`, W / 2, 390, '#aaa', 16, 'center');
-  drawText('Every form conquered. Every mansion cleared.', W / 2, 420, '#CE93D8', 16, 'center');
-  drawText('The universe bows to you.', W / 2, 448, '#00E5FF', 14, 'center');
+
+  // Final stats
+  drawText(`Final Score: ${score}  |  ${totalKeys} keys  |  ${totalMonstersEverKilled} monsters slain`, W / 2, 385, '#aaa', 13, 'center');
+  drawText(`Best Kill Streak: ${killStreak >= bestStreak ? killStreak : bestStreak}`, W / 2, 405, '#FF5722', 12, 'center');
+
+  // Achievement summary
+  const achCount = Object.keys(unlockedAchievements).length;
+  const achTotal = ACHIEVEMENTS.length;
+  drawText(`Achievements: ${achCount}/${achTotal}`, W / 2, 430, '#CE93D8', 14, 'center');
+
+  // Show unlocked achievements as a row
+  let achX = W / 2 - (Math.min(achCount, 8) * 30) / 2;
+  let achDrawn = 0;
+  ACHIEVEMENTS.forEach(ach => {
+    if (unlockedAchievements[ach.id] && achDrawn < 8) {
+      ctx.fillStyle = '#FFD700';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('*', achX + achDrawn * 30 + 15, 458);
+      ctx.font = '7px Segoe UI, sans-serif';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(ach.name.substring(0, 8), achX + achDrawn * 30 + 15, 470);
+      achDrawn++;
+    }
+  });
+
+  if (score > bestScore) {
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 200);
+    ctx.globalAlpha = pulse;
+    drawTextBold('NEW HIGH SCORE!', W / 2, 495, '#FFD700', 20, 'center');
+    ctx.globalAlpha = 1;
+  } else {
+    drawText('The universe bows to you.', W / 2, 495, '#00E5FF', 14, 'center');
+  }
 
   const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.globalAlpha = alpha;
-  drawText('Tap or Press ENTER to play again', W / 2, 520, '#fff', 18, 'center');
+  drawText('Tap or Press ENTER to play again', W / 2, 530, '#fff', 18, 'center');
   ctx.globalAlpha = 1;
+
+  saveHighScores();
 }
 
 function updateWin() {
@@ -3527,6 +3897,74 @@ function drawParticles() {
   ctx.restore();
 }
 
+// ── Score Popups ─────────────────────────────────────────────
+function updateScorePopups() {
+  for (let i = scorePopups.length - 1; i >= 0; i--) {
+    scorePopups[i].y -= 1;
+    scorePopups[i].life--;
+    if (scorePopups[i].life <= 0) scorePopups.splice(i, 1);
+  }
+  // Achievement popup queue
+  if (!achievementPopup && achievementPopupQueue.length > 0) {
+    achievementPopup = achievementPopupQueue.shift();
+  }
+  if (achievementPopup) {
+    achievementPopup.timer--;
+    if (achievementPopup.timer <= 0) achievementPopup = null;
+  }
+}
+
+function drawScorePopups() {
+  ctx.save();
+  scorePopups.forEach(sp => {
+    const alpha = sp.life / sp.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.font = sp.text.length > 10 ? 'bold 12px Segoe UI, sans-serif' : 'bold 16px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#000';
+    ctx.fillText(sp.text, sp.x + 1, sp.y + 1);
+    ctx.fillStyle = sp.color;
+    ctx.fillText(sp.text, sp.x, sp.y);
+  });
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawAchievementPopup() {
+  if (!achievementPopup) return;
+  const ap = achievementPopup;
+  const alpha = ap.timer > 150 ? (180 - ap.timer) / 30 :
+                ap.timer < 30 ? ap.timer / 30 : 1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const bw = 280;
+  const bh = 50;
+  const bx = (W - bw) / 2;
+  const by = 20;
+  // Background
+  ctx.fillStyle = 'rgba(20,10,40,0.92)';
+  roundRect(bx, by, bw, bh, 10);
+  ctx.fill();
+  // Gold border
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#FFD700';
+  ctx.shadowBlur = 10;
+  roundRect(bx, by, bw, bh, 10);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // Text
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 14px Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('ACHIEVEMENT UNLOCKED!', W / 2, by + 18);
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px Segoe UI, sans-serif';
+  ctx.fillText(`${ap.name} — ${ap.desc}`, W / 2, by + 38);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // ── HUD ──────────────────────────────────────────────────────
 function updateHUD() {
   const hudLeft = document.getElementById('hudLeft');
@@ -3539,11 +3977,20 @@ function updateHUD() {
       heartStr += i < currentHearts ? '\u2764\uFE0F' : '\uD83D\uDDA4';
     }
 
+    // Progress bar to next rank
+    const nextRank = rank < RANKS.length - 1 ? RANKS[rank + 1] : null;
+    const prevThreshold = RANKS[rank].threshold;
+    const nextThreshold = nextRank ? nextRank.threshold : prevThreshold;
+    const progress = nextRank ? Math.min(1, (totalKeys - prevThreshold) / (nextThreshold - prevThreshold)) : 1;
+    const progressBar = nextRank ? `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:6px;margin-top:2px;overflow:hidden"><div style="background:${RANKS[rank].color};height:100%;width:${Math.round(progress * 100)}%;border-radius:3px;transition:width 0.3s"></div></div>` : '';
+
     const heroF = getHeroForm();
+    const streakStr = killStreak >= 3 ? `<span style="color:#FF5722"> x${killStreak}</span>` : '';
+    const buffStr = damageBuffTurns > 0 ? `<span style="color:#E040FB"> PWR(${damageBuffTurns})</span>` : '';
     hudLeft.innerHTML = `
-      <div style="color:${heroF.accentColor}; font-weight:bold">${heroF.name} <span style="color:${RANKS[rank].color}">(${RANKS[rank].name})</span></div>
+      <div style="color:${heroF.accentColor}; font-weight:bold">${heroF.name} <span style="color:${RANKS[rank].color}">(${RANKS[rank].name})</span>${streakStr}${buffStr}</div>
       <div>Hearts: ${heartStr}</div>
-      <div>Keys: ${totalKeys} total</div>
+      <div style="color:#FFD700">Score: ${score} | Keys: ${totalKeys}${progressBar}</div>
     `;
 
     if (gameState === STATE.MANSION) {
@@ -3551,15 +3998,14 @@ function updateHUD() {
       hudRight.innerHTML = `
         <div style="color:#FF5722">Haunted Mansion - Level ${level + 1}</div>
         <div style="color:#FFD700">Keys: ${keysThisLevel}/10</div>
-        <div>Defeated: ${monstersDefeated}/${monstersRequired}${alive > 0 ? ' ('+alive+' roaming)' : ''}</div>
+        <div>Defeated: ${monstersDefeated}/${monstersRequired}${alive > 0 ? ' ('+alive+' roaming)' : ''}${killStreak >= 2 ? ' | Streak: ' + killStreak : ''}</div>
       `;
     } else {
-      const nextRank = rank < RANKS.length - 1 ? RANKS[rank + 1] : null;
       const canEnter = currentHearts >= maxHearts;
       hudRight.innerHTML = `
         <div>Level ${level + 1} - Overworld</div>
         <div>${canEnter ? '<span style="color:#FFD700">Hearts full! Find the mansion portal!</span>' : `Collect hearts (${currentHearts}/${maxHearts}) to enter mansion`}</div>
-        ${nextRank ? `<div style="color:${nextRank.color}">Next: ${nextRank.name} (${nextRank.threshold} keys)</div>` : ''}
+        ${nextRank ? `<div style="color:${nextRank.color}">Next: ${nextRank.name} (${nextRank.threshold - totalKeys} keys away)</div>` : '<div style="color:#00E5FF">MAX RANK</div>'}
       `;
     }
     hudLeft.style.display = 'block';
@@ -3644,20 +4090,24 @@ function gameLoop(now) {
 
   // Update particles
   updateParticles(dt);
+  updateScorePopups();
 
   // Draw
   const shook = applyShake();
 
   switch (gameState) {
     case STATE.TITLE: drawTitle(); break;
-    case STATE.OVERWORLD: drawOverworld(); drawParticles(); break;
+    case STATE.OVERWORLD: drawOverworld(); drawParticles(); drawScorePopups(); break;
     case STATE.MANSION_ENTER: drawMansionEnter(); break;
-    case STATE.MANSION: drawMansion(); drawParticles(); break;
-    case STATE.COMBAT: drawCombat(); break;
+    case STATE.MANSION: drawMansion(); drawParticles(); drawScorePopups(); break;
+    case STATE.COMBAT: drawCombat(); drawScorePopups(); break;
     case STATE.LEVEL_UP: drawLevelUp(); break;
     case STATE.GAME_OVER: drawGameOver(); break;
     case STATE.WIN: drawWin(); break;
   }
+
+  // Achievement popup on top of everything except transition
+  drawAchievementPopup();
 
   endShake(shook);
 
